@@ -6,11 +6,12 @@ import numpy as np
 import librosa
 
 import scipy
+import torch
 
 RANDOM = np.random.RandomState(1337)
 CACHE = {}
 
-def openAudioFile(path, sample_rate=48000, offset=0.0, duration=None):
+def openAudioFile(path, sample_rate=44100, offset=0.0, duration=None):
     
     # Open file with librosa (uses ffmpeg or libav)
     sig, rate = librosa.load(path, sr=sample_rate, offset=offset, duration=duration, mono=True, res_type='kaiser_fast')
@@ -183,7 +184,7 @@ def spectrogram(sig, rate, shape=(64, 512), win_len=512, fmin=150, fmax=15000, f
     else:
         spec = np.clip(spec, 0, 1)
 
-    return spec
+    return torch.from_numpy(spec.copy())
 
 def get_spec(sig, rate, spec_type='melspec', **kwargs):
 
