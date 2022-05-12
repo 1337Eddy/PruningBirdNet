@@ -20,6 +20,8 @@ def labels_to_one_hot_encondings(labels):
         result[i][bird_dict[labels[i]]] = 1
     return result
 
+def id_to_label(id):
+    return list(bird_dict)[id]
 
 
 class CallsDataset(Dataset):

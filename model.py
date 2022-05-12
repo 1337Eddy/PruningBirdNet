@@ -9,37 +9,26 @@ KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
 RESNET_K = 4
 RESNET_N = 3
 num_classes = 83
-filters = [[32], 
-[[16, 16, 32], 64, 64, 64], 
-[[32, 32, 64], 128, 128, 128], 
-[[64, 64, 128], 256, 256, 256], 
-[[128, 128, 256], 512, 512, 512],
+filters = [[[32]], 
+[[16, 16, 32], [64, 64], [64, 64], [64, 64]], 
+[[32, 32, 64], [128, 128], [128, 128], [128, 128]], 
+[[64, 64, 128], [256, 256], [256, 256], [256, 256]], 
+[[128, 128, 256], [512, 512], [512, 512], [512, 512]],
 [512, 512, num_classes]]
-
-input = [[32]]
-resstack1 = [[[16, 16, 32], 64, 64, 64]]
-resstack2 = [[[32, 32, 64], 128, 128, 128]]
-resstack3 = [[[64, 64, 128], 256, 256, 256]]
-resstack4 = [[[128, 128, 256], 512, 512, 512]]
-output = [[512, 512, num_classes]]
-
-filtersnew = input + resstack1 + resstack2 + resstack3 + resstack4 + output
-
-
 
 class BirdNet(nn.Module):
     def __init__(self, filters=filters):
         super(BirdNet, self).__init__()
         print('Start initialize Model')
-        self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0])]
+        self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
         for i in range(1, len(filters) - 1):
-            in_channels = filters[i-1][-1]
+            in_channels = filters[i-1][-1][-1]
             self.layers += [ResStack(num_filters=filters[i], in_channels=in_channels, kernel_size=KERNEL_SIZES[i-1])]
-        self.layers += [nn.BatchNorm2d(filters[-2][-1])]
+        self.layers += [nn.BatchNorm2d(filters[-2][-1][-1])]
         self.layers += [nn.ReLU(True)]
-        self.layers += [ClassificationPath(in_channels=filters[-2][-1], num_filters=filters[-1], kernel_size=(5,33))]
-        self.layers += [nn.AvgPool2d(kernel_size=(4,32))]
-        self.layers += [nn.Softmax()]
+        self.layers += [ClassificationPath(in_channels=filters[-2][-1][-1], num_filters=filters[-1], kernel_size=(4,10))]
+        self.layers += [nn.AdaptiveAvgPool2d(output_size=(1,1))]
+        #self.layers += [nn.Softmax()]
         self.classifier = nn.Sequential(*self.layers)
 
         print('Model initialized')
@@ -63,12 +52,12 @@ class Resblock(nn.Module):
         self.classifier = nn.Sequential(
             nn.BatchNorm2d(num_features=in_channels),
             nn.ReLU(True),
-            nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=kernel_size, padding='same'),
-            nn.BatchNorm2d(num_features=num_filters),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm2d(num_features=num_filters[0]),
             nn.ReLU(True),
             nn.Dropout(),
-            nn.Conv2d(in_channels=num_filters, out_channels=num_filters, kernel_size=kernel_size, padding='same'),
-            nn.BatchNorm2d(num_features=num_filters)
+            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=kernel_size, padding='same'),
+            nn.BatchNorm2d(num_features=num_filters[1])
         )
         self.W = torch.nn.Parameter(torch.randn(2))
         self.W.requires_grad = True
@@ -102,8 +91,8 @@ class ResStack(nn.Module):
         resblock_list = []
         for i in range (1, len(num_filters)):
             resblock_list += [Resblock(num_filters=num_filters[i], in_channels=in_channels_resblock, kernel_size=kernel_size)]
-            in_channels_resblock = num_filters[i]
-        resblock_list += [nn.BatchNorm2d(num_features=num_filters[-1])]
+            in_channels_resblock = num_filters[i][-1]
+        resblock_list += [nn.BatchNorm2d(num_features=num_filters[-1][-1])]
         resblock_list += [nn.ReLU(True)]
 
         self.classifier = nn.Sequential(
@@ -169,7 +158,7 @@ class ClassificationPath(nn.Module):
     def __init__(self, in_channels, num_filters, kernel_size):
         super(ClassificationPath, self).__init__()
         self.classifierPath = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding='same'),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding='valid'),
             nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters[0]),
             nn.Dropout(),
