@@ -3,11 +3,11 @@ from pickletools import optimize
 from tkinter import Variable
 from tkinter.tix import Tree
 from importlib_metadata import distribution
-#from black import out
+from sqlalchemy import over
 
 import torch
 import torch.optim as optim
-from torch import device, nn
+from torch import device, nn, softmax
 import model 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -140,23 +140,53 @@ class AnalyzeBirdnet():
         self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, self.save_path  + "birdnet_final.pt")       
         print("Saved Model!")
     
-    def eval(self, path, rate=44100, topk=5):
+    def eval(self, path, rate=44100, topk=1, seconds=3, overlap=0, minlen=3, batchsize=16):
         self.birdnet.eval()
         sig, rate = audio.openAudioFile(path, rate)
-        x = audio.get_spec(sig, rate)
-        x = x[None, None, :, :]
-        x = x.cuda(non_blocking=True)
-        output = self.birdnet(x.float()) 
-        output = torch.flatten(output)
-        output = self.softmax(np.array(output.cpu().detach()))
+        specs = audio.specsFromSignal(sig, rate, seconds=seconds, overlap=overlap, minlen=minlen)
+        counter = 0
+        time = 0
+        predictions = []
+        while (True):
+            try:
+                if (counter == 0):
+                    batch = next(specs)
+                    batch = batch[None, None, :, :]
+                    counter +=1
+                elif (counter < batchsize):
+                    spec = next(specs)
+                    batch = torch.cat((batch, spec[None, None, :, :]), dim=0)     
+                    counter +=1 
+                else: 
+                    batch = batch.cuda(non_blocking=True)
+                    output = self.birdnet(batch.float())   
+                    output = torch.squeeze(output)
+                    for pred in output:
+                        estimation = self.softmax(np.array(pred.cpu().detach()))
+                        index = np.argmax(estimation)
+                        prediction = id_to_label(index)
+                        predictions += [(time, time + seconds, prediction, estimation[index])]
+                        time += seconds - overlap
+                    counter = 0
+                    batch = None
+                
+            except StopIteration:
+                if (batch != None):
+                    batch = batch.cuda(non_blocking=True)
+                    output = self.birdnet(batch.float())   
+                    output = torch.squeeze(output)
+                    if (np.shape(output) == torch.Size([83])):
+                        output = output[None, :]
+                    for pred in output:
+                        estimation = self.softmax(np.array(pred.cpu().detach()))
+                        index = np.argmax(estimation)
+                        prediction = id_to_label(index)
+                        predictions += [(time, time + seconds, prediction, estimation[index])]
+                        time += seconds - overlap
+                    break
+        return predictions
 
-        distribution = []
-        for i in range(0, len(output)):
-            distribution += [(id_to_label(i), output[i])]
         
-        distribution.sort(key=lambda x: x[1], reverse=True)
-        print(distribution[:topk])
-        #print("Test")
     
     def softmax(self, x):
         f_x = np.exp(x) / np.sum(np.exp(x))
@@ -213,7 +243,8 @@ def main():
         analyze.start_training(int(args.epochs))
     elif (mode == 'eval'):
         analyze = AnalyzeBirdnet(birdnet=birdnet)
-        analyze.eval("/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/1calls/comswi/XC551688-204800.wav")
+        result = analyze.eval("/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/1calls/arcter/XC582288-326656.wav")
+        print(result)
 
 if __name__ == '__main__':
 
