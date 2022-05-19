@@ -2,7 +2,14 @@ import numpy as np
 import torch 
 import torch.nn as nn
 from utils import log
+from enum import Enum
+import torch.nn.functional as F
 
+
+class Skip_Handling(Enum):
+    PADD = 0
+    CUT = 1
+    SKIP = 2
 
 FILTERS = [8, 16, 32, 64, 128]
 KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
@@ -17,8 +24,11 @@ filters = [[[32]],
 [512, 512, num_classes]]
 
 class BirdNet(nn.Module):
-    def __init__(self, filters=filters):
+    def __init__(self, filters=filters, skip_handling=Skip_Handling.SKIP):
         super(BirdNet, self).__init__()
+
+        global handling
+        handling = skip_handling
         print('Start initialize Model')
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
         for i in range(1, len(filters) - 1):
@@ -28,7 +38,6 @@ class BirdNet(nn.Module):
         self.layers += [nn.ReLU(True)]
         self.layers += [ClassificationPath(in_channels=filters[-2][-1][-1], num_filters=filters[-1], kernel_size=(4,10))]
         self.layers += [nn.AdaptiveAvgPool2d(output_size=(1,1))]
-        #self.layers += [nn.Softmax()]
         self.classifier = nn.Sequential(*self.layers)
 
         print('Model initialized')
@@ -62,17 +71,36 @@ class Resblock(nn.Module):
         self.W = torch.nn.Parameter(torch.randn(2))
         self.W.requires_grad = True
 
+
     def forward(self, x):
         skip = x 
         skip = torch.mul(skip, self.W[1])
         x = self.classifier(x)
-        #ToDO fix dimensionality error in case #filter_in not equal to #filters_out
-        if (np.shape(x) == np.shape(skip)):
-            x = torch.mul(x, self.W[0])
-            x = torch.add(x, skip)
-            return x
+        
+
+        if (handling == Skip_Handling.PADD):
+            filters_skip = np.shape(skip)[1]
+            filters_x = np.shape(x)[1] 
+            diff = abs(filters_x - filters_skip)
+            even = True if diff % 2 == 0 else False
+            pad_up = int(diff / 2)
+            pad_down = int(diff / 2) if even else int(diff / 2) + 1
+            if (filters_skip < filters_x):
+                skip = F.pad(input=skip, pad=(0,0,0,0, pad_up, pad_down), mode='constant', value=0)
+            else: 
+                x = F.pad(input=x, pad=(0,0,0,0,pad_up, pad_down), mode='constant',value=0)
+            
+            assert np.shape(x) == np.shape(skip)                    
+
+        elif (handling == Skip_Handling.CUT):
+            print("Do something other")
         else:
-            return x
+            if (np.shape(x) != np.shape(skip)):
+                return x
+        
+        x = torch.mul(x, self.W[0])
+        x = torch.add(x, skip)
+        return x
 
 """
 ResStack (Residual Stack) is a network mainly build from multiple Resblocks

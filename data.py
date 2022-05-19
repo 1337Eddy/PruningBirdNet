@@ -1,10 +1,7 @@
 from operator import indexOf
 from torch.utils.data import Dataset
 from utils.audio import get_spec, openAudioFile
-import librosa
-import time
 import os
-import torch
 import numpy as np
 path = "1dataset/1data/1calls/"
 
