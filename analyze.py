@@ -57,7 +57,7 @@ class AnalyzeBirdnet():
             if isinstance(resstack, model.ResStack):
                 for resblock in resstack.classifier:
                     if isinstance(resblock, model.Resblock):          
-                        sum += torch.sum(torch.abs(resblock.W.cpu())) 
+                        sum += torch.abs(resblock.W[0].cpu())
         sum.cuda()
         return sum
 
@@ -78,6 +78,7 @@ class AnalyzeBirdnet():
         losses = AverageMeter()
         top1 = AverageMeter()
         for idx, (data, target) in enumerate(self.train_loader):
+
             torch.cuda.empty_cache()
 
             data, target = self.prepare_data_and_labels(data, target)

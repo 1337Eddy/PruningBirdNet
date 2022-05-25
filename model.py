@@ -24,11 +24,13 @@ filters = [[[32]],
 [512, 512, num_classes]]
 
 class BirdNet(nn.Module):
-    def __init__(self, filters=filters, skip_handling=Skip_Handling.SKIP):
+    def __init__(self, filters=filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD):
         super(BirdNet, self).__init__()
 
-        global handling
-        handling = skip_handling
+        global channel_handling
+        global block_handling 
+        channel_handling = skip_handling
+        block_handling = handling_block
         print('Start initialize Model')
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
         for i in range(1, len(filters) - 1):
@@ -58,29 +60,46 @@ Args:
 class Resblock(nn.Module):
     def __init__(self, num_filters, in_channels, kernel_size):
         super(Resblock, self).__init__()
-        self.classifier = nn.Sequential(
-            nn.BatchNorm2d(num_features=in_channels),
-            nn.ReLU(True),
-            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding='same'),
-            nn.BatchNorm2d(num_features=num_filters[0]),
-            nn.ReLU(True),
-            nn.Dropout(),
-            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=kernel_size, padding='same'),
-            nn.BatchNorm2d(num_features=num_filters[1])
-        )
+        self.in_channels = in_channels
+        self.layer_list = [ nn.BatchNorm2d(num_features=in_channels),
+                            nn.ReLU(True),
+                            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, 
+                                padding=int(kernel_size[0]/2)),
+                            nn.BatchNorm2d(num_features=num_filters[0]),
+                            nn.ReLU(True),
+                            nn.Dropout(),
+                            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=kernel_size, 
+                                padding=int(kernel_size[0]/2)),
+                            nn.BatchNorm2d(num_features=num_filters[1])]
+
+        self.classifier = nn.Sequential(*self.layer_list)
         self.W = torch.nn.Parameter(torch.randn(2))
         self.W.requires_grad = True
 
 
     def forward(self, x):
-        skip = x 
-        skip = torch.mul(skip, self.W[1])
-        x = self.classifier(x)
+
+        #Basis case: Amount of input channels for Residual Block is equivalent to number of features in the first BatchNorm2d layer in the Block
+        if (self.in_channels == self.layer_list[0].num_features):
+            skip = x 
+            skip = torch.mul(skip, self.W[1])
+            x = self.classifier(x)
+        else: 
+            if (block_handling == Skip_Handling.PADD):
+                print("TODO")
+
+
+            
         
 
-        if (handling == Skip_Handling.PADD):
-            filters_skip = np.shape(skip)[1]
-            filters_x = np.shape(x)[1] 
+        if (channel_handling == Skip_Handling.PADD):
+            filters_skip = skip.size(dim=1)
+            filters_x = x.size(dim=1) 
+            if (torch.is_tensor(filters_skip)):
+                filters_skip = filters_skip.item()
+            if (torch.is_tensor(filters_x)):
+                filters_x = filters_x.item()
+
             diff = abs(filters_x - filters_skip)
             even = True if diff % 2 == 0 else False
             pad_up = int(diff / 2)
@@ -92,12 +111,11 @@ class Resblock(nn.Module):
             
             assert np.shape(x) == np.shape(skip)                    
 
-        elif (handling == Skip_Handling.CUT):
+        elif (channel_handling == Skip_Handling.CUT):
             print("Do something other")
         else:
             if (np.shape(x) != np.shape(skip)):
                 return x
-        
         x = torch.mul(x, self.W[0])
         x = torch.add(x, skip)
         return x
@@ -143,7 +161,8 @@ class DownsamplingResBlock(nn.Module):
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=(1,1)),
             nn.BatchNorm2d(num_features=num_filters[0]),
             nn.ReLU(True),
-            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=kernel_size, padding='same'),
+            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=kernel_size, 
+                padding=int(kernel_size[0]/2)),
             nn.BatchNorm2d(num_features=num_filters[1]),
             nn.ReLU(True),
             nn.MaxPool2d(2),
@@ -186,7 +205,7 @@ class ClassificationPath(nn.Module):
     def __init__(self, in_channels, num_filters, kernel_size):
         super(ClassificationPath, self).__init__()
         self.classifierPath = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding='valid'),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding=0),
             nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters[0]),
             nn.Dropout(),
