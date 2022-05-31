@@ -1,8 +1,10 @@
+import collections
 from re import L
-from attr import define
+from typing import OrderedDict
 import torch
 import torch.optim as optim
 from torch import device, nn, softmax
+from analyze import AnalyzeBirdnet
 import model 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -17,6 +19,8 @@ from metrics import accuracy
 import monitor
 import argparse
 from utils import audio
+import re
+
 
 filters = [[[32]], 
 [[16, 16, 32], [64, 64], [64, 64], [64, 64]], 
@@ -27,224 +31,120 @@ filters = [[[32]],
 
 
 
-class AnalyzeBirdnet():
-    def __init__(self, birdnet, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    train_loader=None, test_loader=None, save_path=None, loss_patience=1, early_stopping=2, gamma=0.3):
-        self.gamma = gamma 
-        self.loss_patience = loss_patience
-        self.early_stopping = early_stopping
-        self.save_path = save_path
-        self.train_loader = train_loader
-        self.test_loader = test_loader
-        self.criterion = criterion
-        self.lr = lr
-        self.criterion = nn.CrossEntropyLoss().cuda()
-        self.birdnet = birdnet
-        self.optimizer = optim.Adam(self.birdnet.parameters(), lr=self.lr) 
-
-    def sum_scaling_parameters(self):
-        sum = 0
-        for resstack in self.birdnet.module.classifier:
-            if isinstance(resstack, model.ResStack):
-                for resblock in resstack.classifier:
-                    if isinstance(resblock, model.Resblock):          
-                        sum += torch.sum(torch.abs(resblock.W.cpu())) 
-        sum.cuda()
-        return sum
-
-    def prepare_data_and_labels(self, data, target):
-        data = data.cuda(non_blocking=True)    
-        data = Variable(data)       
-        target = map_labels(target)
-        target= torch.from_numpy(target)
-        target = target.cuda(non_blocking=True)
-        target = Variable(target)
-        return data, target
-
-    """
-    Trains model for one epoch with given dataloader
-    """
-    def train(self, epoch):
-        self.birdnet.train()
-        losses = AverageMeter()
-        top1 = AverageMeter()
-        for idx, (data, target) in enumerate(self.train_loader):
-            torch.cuda.empty_cache()
-
-            data, target = self.prepare_data_and_labels(data, target)
-
-            #Run model and backpropagate
-            output = self.birdnet(data.float())
-            output = np.squeeze(output)
-            self.optimizer.zero_grad()
-            loss = self.criterion(output.float(), target.float())
-
-            sum = self.sum_scaling_parameters()
-            
-            loss = loss + self.gamma * sum
-            loss.backward()
-            self.optimizer.step()
-            #Calculate and update metrics
-            losses.update(loss.item(), data.size(0))
-            prec = accuracy(output.data, target)
-            top1.update(prec, data.size(0))
-
-            if(idx % 100 == 0):
-                print('epoch: {:d}, iteration {:d}, Loss: {loss.val:.4f},\t' 
-                      'Loss avg: {loss.avg:.4f}, Accuracy: {top1.val:.4f}, Avg Accuracy: {top1.avg:.4f}'.format(epoch, idx, loss=losses, top1=top1))
-        return losses, top1
-
-
-    """
-    Tests model over data from dataloader
-    """
-    def test(self):
-        self.birdnet.eval()
-        losses = AverageMeter()
-        top1 = AverageMeter()
-        for data, target in self.test_loader:
-            torch.cuda.empty_cache()
-
-            data, target = self.prepare_data_and_labels(data, target)
-
-            #Run model
-            output = self.birdnet(data.float())
-            output = np.squeeze(output)
-            loss = self.criterion(output.float(), target.float())
-
-            sum = self.sum_scaling_parameters()
-            loss = loss + self.gamma * sum
-
-            #Calculate and update metrics
-            losses.update(loss.item(), data.size(0))
-            prec = accuracy(output.data, target)
-            top1.update(prec, data.size(0))
-        return losses, top1
-
-
-    def save_model(self, epochs, birdnet, optimizer, val_loss, val_top1, path, filters=filters):
-        torch.save({
-                'filters': filters, 
-                'epoch': epochs,
-                'model_state_dict': birdnet.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'loss': val_loss,
-                'accuracy': val_top1
-                }, path)
-
-    """
-    Train loop that trains the model for some epochs and handels learning rate reduction and checkpoint save
-    """
-    def start_training(self, epochs):
-        self.birdnet.train()
-        monitoring = monitor.Monitor(self.loss_patience, self.early_stopping)
-        version = 0
-
-
-        sum = 0
-        for resstack in self.birdnet.module.classifier:
-                if isinstance(resstack, model.ResStack):
-                    for resblock in resstack.classifier:
-                        if isinstance(resblock, model.Resblock):
-                            values = np.array(resblock.W.cpu().detach())     
-                            sum += np.sum(np.abs(values))
-                            print(values)
-        print(sum)
-
-        for i in range(0, epochs):
-            train_loss, train_top1 = self.train(epoch=i)
-            val_loss, val_top1 = self.test()
-            print('epoch: {:d} train loss: {train_loss.val:.4f}, avg loss: {train_loss.avg:.4f}, avg accuracy: {train_top1.avg:.4f}\t'
-                  '\ntest loss: {val_loss.val:.4f}, avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(i, train_loss=train_loss,train_top1=train_top1, val_loss=val_loss, val_top1=val_top1))
-            status = monitoring.update(val_loss.avg, lr=self.lr)
-            if (status == monitor.Status.LEARNING_RATE):
-                self.lr *= 0.5
-            elif (status == monitor.Status.STOP):
-                break 
-
-            if (i % 5 == 0):
-                print(f"Save checkpoint: {self.save_path} birdnet_v{version}.pt")
-                self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, self.save_path + f"birdnet_v{version}.pt")       
-                version += 1
-
-        sum = 0
-        for resstack in self.birdnet.module.classifier:
-                if isinstance(resstack, model.ResStack):
-                    for resblock in resstack.classifier:
-                        if isinstance(resblock, model.Resblock):
-                            values = np.array(resblock.W.cpu().detach())     
-                            sum += np.sum(np.abs(values))
-                            print(values)
-        print(sum)
-
-        self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, self.save_path  + "birdnet_final.pt")       
-        print("Saved Model!")
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='train', help='Set programm into train mode')
-    parser.add_argument('--load_model', default='', help='Load model from file')
-    parser.add_argument('--epochs', default=40, help='Specify number of epochs for training')
-    parser.add_argument('--save_path', default='models/birdnet/', help='Specifies the path where final model and checkpoints are saved')
-    parser.add_argument('--lr', default=0.001, help='Learning rate for training')
-    parser.add_argument('--batch_size', default=16, help='Number of samples for one train batch')
-    parser.add_argument('--threads', default=16)
-    parser.add_argument('--sparsity', default=0.2)
-
-    #Define Random seed for reproducibility
-    torch.cuda.manual_seed(1337)
-    torch.manual_seed(73)
-    
-    #Assign Arguments
-    args = parser.parse_args()
-    mode = args.mode
-    num_workers=int(args.threads)
-    batch_size=args.batch_size#
-    lr=float(args.lr)
-    Path(args.save_path).mkdir(parents=True, exist_ok=True)
-    sparsity = float(args.sparsity)
-
-    #Model parameter
-    birdnet = model.BirdNet()
-    birdnet = torch.nn.DataParallel(birdnet).cuda()
-    birdnet = birdnet.float()
-    criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
-
-    if (args.load_model != ''):
-        checkpoint = torch.load(args.load_model)
-        birdnet.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    
-    
-    if (mode == 'train'):
-        #Load Data
-        dataset = CallsDataset()
-        train_size = int(len(dataset) * 0.8)
-        test_size = len(dataset) - train_size
-        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-
-        #Start Training
-        analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, test_loader=test_loader, save_path=args.save_path, gamma=sparsity)
-        analyze.start_training(int(args.epochs))
-    elif (mode == 'eval'):
-        analyze = AnalyzeBirdnet(birdnet=birdnet)
-        result = analyze.eval("/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/1calls/arcter/XC582288-326656.wav")
-        print(result)
-
+#Important condition
 def drop_condition(tensor):
-    if (tensor[0] < tensor[1]):
+    if (100*abs(tensor[0]) < abs(tensor[1])):
         return True
     else:
         return False
     
 
+
+def has_successor(model_state_dict, elem):
+    prefix = elem[:35]
+    number = int(elem[35])
+    suffix = elem [36:]
+
+    for i in range(1, 10):
+        name = prefix + str(number + i) + suffix 
+        if name in model_state_dict:
+            return True, prefix + str(number + 1) + suffix
+    return False, ""
+
+
+def rename_parameter_keys(model_state_dict):
+    """
+    Pytorch stores the parameters in a OrderdDict with specific key names
+    After removing parameters from the model, the names have to be rearranged because the continous
+    numbering of pytorch is broken otherwise
+    """
+    key_list = []
+    for key, item in model_state_dict.items():
+        key_list.append((key, item))
+
+
+    new_model_state_dict = OrderedDict()
+    counter = 0
+    last = None
+    stack_counter = 1
+    for i in range(0, len(key_list)):
+        pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\."
+        key = key_list[i][0]       
+        number_list = re.search(pattern, key)
+
+        if number_list:
+            incoming = int(key[31])
+            current_stack = int(key[18])
+            if current_stack > stack_counter:
+                stack_counter = current_stack
+                counter = 0
+                last = None 
+  
+            if incoming == counter:
+                new_model_state_dict[key] = model_state_dict[key]
+            elif incoming - 1 == counter and last == None:
+                new_model_state_dict[key] = model_state_dict[key]
+                counter += 1
+            elif incoming == 0:
+                new_model_state_dict[key] = model_state_dict[key]
+                last == None
+                counter = 0
+            elif last == None:
+                counter += 1
+                last = incoming
+                new_key_name = key[:31] + str(counter) + key[32:]
+                new_model_state_dict[new_key_name] = model_state_dict[key]
+            elif last < incoming:
+                counter +=1
+                last = incoming
+                new_key_name = key[:31] + str(counter) + key[32:]
+                new_model_state_dict[new_key_name] = model_state_dict[key]
+            elif last == incoming:
+                new_key_name = key[:31] + str(counter) + key[32:]
+                new_model_state_dict[new_key_name] = model_state_dict[key]
+        else:
+            new_model_state_dict[key] = model_state_dict[key]
+    return new_model_state_dict
+
+def fix_dimension_problems(model_state_dict):
+    last_dimension = None
+    last_layer = None 
+
+
+    for key, value in model_state_dict.items():
+
+        
+
+        if last_dimension == None:
+            last_dimension = value.size()
+            last_layer = key.split('.')[-1]
+        else:
+            current_dimension = value.size()
+            current_layer = key.split('.')[-1]
+
+            if value.dim() > 1:
+                input_last = last_dimension[0]
+                input_current = current_dimension[1]
+                ouput = current_dimension[0]
+                if input_last < input_current:
+                    model_state_dict[key] = model_state_dict[key][:,:input_last,:,:]
+            elif current_layer != "W" and current_layer != "num_batches_tracked":
+                if last_dimension[0] < current_dimension[0]:
+                    model_state_dict[key] = value[:last_dimension[0]]
+            else:
+                continue
+            last_dimension = model_state_dict[key].size()
+            last_layer = key.split('.')[-1]
+            print(key + ": " + str(np.shape(model_state_dict[key])))
+
+    return model_state_dict    
+
+
+
 def load_model(ratio=0.2, lr=0.001):
-    checkpoint = torch.load("models/paddtest/birdnet_final.pt")
+    checkpoint = torch.load("models/birdnet/birdnet_final.pt")
     model_state_dict = checkpoint['model_state_dict']
+
     filters = checkpoint['filters']
     birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
@@ -254,32 +154,64 @@ def load_model(ratio=0.2, lr=0.001):
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     print("Loaded old model")
 
-    print(birdnet)
 
+    remove_index = []
+    remove_list = []
 
-    # #Iterate over filters to build names of saved layers
-    # for i in range(1, len(filters) - 1):
-    #     for j in range (1, len(filters[i])):
-    #         name = f"module.classifier.{i}.classifier.{j}."
+    #Iterate over filters to build names of saved layers and find layers to drop
+    for i in range(1, len(filters) - 1):
+        for j in range (1, len(filters[i])):
+            name = f"module.classifier.{i}.classifier.{j}."
 
-    #         #If the condition to the custom weights is True drop the whole layer
-    #         if (drop_condition(model_state_dict[name + "W"])):
-    #             layers = list(model_state_dict.keys())
-    #             remove_index.insert(0, (i,j)) 
-    #             for layer in layers:
-    #                 if layer.startswith(name):
-    #                     model_state_dict.pop(layer)
-    # for i, j in remove_index:
-    #     del filters[i][j]
+            #If the condition to the custom weights is True drop the whole layer
+            if (drop_condition(model_state_dict[name + "W"])):
+                layers = list(model_state_dict.keys())
+                remove_index.insert(0, (i,j)) 
+                for layer in layers:
+                    if layer.startswith(name):
+                        remove_list.append(layer)
 
+    #Remove elements from channel structure 
+    for i, j in remove_index:
+        del filters[i][j]
 
-    # birdnet = model.BirdNet(filters=filters)
-    # birdnet = torch.nn.DataParallel(birdnet).cuda()
-    # birdnet = birdnet.float()
-    # criterion = nn.CrossEntropyLoss().cuda()
-    # optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
-    # birdnet.load_state_dict(model_state_dict)
-    # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    #Remove weights from model
+    for elem in remove_list:
+        model_state_dict.pop(elem)
+
+    print(filters)
+
+    new_model_state_dict = rename_parameter_keys(model_state_dict)
+    new_model_state_dict = fix_dimension_problems(new_model_state_dict)
+
+    birdnet = model.BirdNet(filters=filters)
+    birdnet = torch.nn.DataParallel(birdnet).cuda()
+    birdnet = birdnet.float()
+    criterion = nn.CrossEntropyLoss().cuda()
+    optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
+    birdnet.load_state_dict(new_model_state_dict)
+    #optimizer_state_dict = checkpoint['optimizer_state_dict']
+    
+
+    finetune = True 
+    if finetune:
+        analyze = AnalyzeBirdnet(birdnet)
+
+        dataset = CallsDataset()
+        train_size = int(len(dataset) * 0.8)
+        test_size = len(dataset) - train_size
+        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+        train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
+        test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
+        #Start Training
+        analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
+                                    test_loader=test_loader, save_path="models/birdnet_pruned/", gamma=0.2)
+        analyze.start_training(10)
+    #result = analyze.eval('1dataset/1data/1calls/arcter/')
+    #print(birdnet)
+
+    #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
 
 if __name__ == '__main__':
     load_model()

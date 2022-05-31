@@ -134,6 +134,7 @@ class AnalyzeBirdnet():
 
     def save_model(self, epochs, birdnet, optimizer, val_loss, val_top1, 
                 train_loss_list, test_loss_list, train_acc_list, test_acc_list, path, filters=filters):
+        Path(path[:-len(path.split('/')[-1])]).mkdir(parents=True, exist_ok=True)
         torch.save({
                 'train_loss_list': train_loss_list,
                 'test_loss_list': test_loss_list,
@@ -178,11 +179,13 @@ class AnalyzeBirdnet():
             if (i % 5 == 0):
                 print("Save checkpoint: " + self.save_path + "birdnet_v" + str(version) + ".pt")
                 self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, 
-                    train_loss_list, test_loss_list, train_acc_list, test_acc_list, self.save_path + "birdnet_v" + str(version) + ".pt")       
+                    train_loss_list, test_loss_list, train_acc_list, test_acc_list, 
+                    self.save_path + "birdnet_v" + str(version) + ".pt", filters=self.birdnet.module.filters)       
                 version += 1
 
         self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, 
-            train_loss_list, test_loss_list, train_acc_list, test_acc_list, self.save_path  + "birdnet_final.pt")       
+            train_loss_list, test_loss_list, train_acc_list, test_acc_list, 
+            self.save_path  + "birdnet_final.pt", filters=self.birdnet.module.filters)       
         print("Saved Model!")
     
 
@@ -269,7 +272,7 @@ class AnalyzeBirdnet():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='eval', help='Set programm into train mode')
+    parser.add_argument('--mode', default='train', help='Set programm into train mode')
     parser.add_argument('--load_model', default='', help='Load model from file')
     parser.add_argument('--epochs', default=20, help='Specify number of epochs for training')
     parser.add_argument('--save_path', default='models/birdnet/', help='Specifies the path where final model and checkpoints are saved')

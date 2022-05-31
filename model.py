@@ -31,7 +31,7 @@ class BirdNet(nn.Module):
         global block_handling 
         channel_handling = skip_handling
         block_handling = handling_block
-        print('Start initialize Model')
+        #print('Start initialize Model')
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
         for i in range(1, len(filters) - 1):
             in_channels = filters[i-1][-1][-1]
@@ -41,8 +41,9 @@ class BirdNet(nn.Module):
         self.layers += [ClassificationPath(in_channels=filters[-2][-1][-1], num_filters=filters[-1], kernel_size=(4,10))]
         self.layers += [nn.AdaptiveAvgPool2d(output_size=(1,1))]
         self.classifier = nn.Sequential(*self.layers)
+        self.filters = filters
 
-        print('Model initialized')
+        #print('Model initialized')
     
     def forward(self, x):
         return self.classifier(x)
@@ -87,10 +88,6 @@ class Resblock(nn.Module):
         else: 
             if (block_handling == Skip_Handling.PADD):
                 print("TODO")
-
-
-            
-        
 
         if (channel_handling == Skip_Handling.PADD):
             filters_skip = skip.size(dim=1)
