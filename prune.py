@@ -1,10 +1,11 @@
 import collections
+from hmac import new
 from re import L
 from typing import OrderedDict
 import torch
 import torch.optim as optim
-from torch import device, nn, softmax
-from analyze import AnalyzeBirdnet
+from torch import device, nn, softmax, threshold
+from analyze_birdnet import AnalyzeBirdnet
 import model 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -28,18 +29,7 @@ filters = [[[32]],
 [[64, 64, 128], [256, 256], [256, 256], [256, 256]], 
 [[128, 128, 256], [512, 512], [512, 512], [512, 512]],
 [512, 512, 83]]
-
-
-
-#Important condition
-def drop_condition(tensor):
-    if (100*abs(tensor[0]) < abs(tensor[1])):
-        return True
-    else:
-        return False
     
-
-
 def has_successor(model_state_dict, elem):
     prefix = elem[:35]
     number = int(elem[35])
@@ -107,14 +97,15 @@ def rename_parameter_keys(model_state_dict):
     return new_model_state_dict
 
 def fix_dimension_problems(model_state_dict):
+    """
+    After pruning residual blocks, it is possible that two layers with incorparable input and output layers have to work together
+    this methods fixes these problems by cutting the weights of the actual layer if the previous has to less channels
+    """
+
     last_dimension = None
     last_layer = None 
 
-
     for key, value in model_state_dict.items():
-
-        
-
         if last_dimension == None:
             last_dimension = value.size()
             last_layer = key.split('.')[-1]
@@ -135,14 +126,35 @@ def fix_dimension_problems(model_state_dict):
                 continue
             last_dimension = model_state_dict[key].size()
             last_layer = key.split('.')[-1]
-            print(key + ": " + str(np.shape(model_state_dict[key])))
+            #print(key + ": " + str(np.shape(model_state_dict[key])))
 
     return model_state_dict    
 
+def test_fix_dim_problems(new_state_dict, state_dict):
+    for key, value in new_state_dict.items():
+        shape = np.shape(state_dict[key])
+        if value.dim() > 1:         
+            new_state_dict[key] = value[:shape[0],:shape[1],:shape[2],:shape[3]]
+        elif shape != torch.Size([]): 
+            new_state_dict[key] = value[:shape[0]]
+    return new_state_dict
 
 
-def load_model(ratio=0.2, lr=0.001):
-    checkpoint = torch.load("models/birdnet/birdnet_final.pt")
+def create_mask(weights, ratio):
+    weights = np.array(weights.cpu())
+    mask = []
+    for i in range(0, len(weights)):
+        mask.append([weights[i], i])
+    mask = sorted(mask, key = lambda x: abs(x[0]))
+    for i in range(0, int(len(mask) * ratio)):
+        mask[i][0] = 0
+    mask = sorted(mask, key = lambda x: x[1])
+    
+
+    exit()
+
+def prune(load_path, ratio=0.2, lr=0.001, save_path=""):
+    checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
 
     filters = checkpoint['filters']
@@ -152,11 +164,19 @@ def load_model(ratio=0.2, lr=0.001):
     optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
     birdnet.load_state_dict(model_state_dict)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    print("Loaded old model")
-
 
     remove_index = []
     remove_list = []
+
+    scaling_factors = []
+    for i in range(1, len(filters) - 1):
+        for j in range (1, len(filters[i])):
+            name = f"module.classifier.{i}.classifier.{j}."
+            scaling_factors.append((model_state_dict[name + "W"]))
+
+    scaling_factors = sorted(scaling_factors, key=lambda x: abs(x[1]))
+
+    threshold = abs(scaling_factors[int((len(scaling_factors)-1) * ratio)][1])
 
     #Iterate over filters to build names of saved layers and find layers to drop
     for i in range(1, len(filters) - 1):
@@ -164,7 +184,7 @@ def load_model(ratio=0.2, lr=0.001):
             name = f"module.classifier.{i}.classifier.{j}."
 
             #If the condition to the custom weights is True drop the whole layer
-            if (drop_condition(model_state_dict[name + "W"])):
+            if (abs(model_state_dict[name + "W"][1]) < threshold):
                 layers = list(model_state_dict.keys())
                 remove_index.insert(0, (i,j)) 
                 for layer in layers:
@@ -179,39 +199,64 @@ def load_model(ratio=0.2, lr=0.001):
     for elem in remove_list:
         model_state_dict.pop(elem)
 
-    print(filters)
-
-    new_model_state_dict = rename_parameter_keys(model_state_dict)
-    new_model_state_dict = fix_dimension_problems(new_model_state_dict)
-
+    #Build new pruned model
     birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
-    birdnet.load_state_dict(new_model_state_dict)
-    #optimizer_state_dict = checkpoint['optimizer_state_dict']
+
+    #Prepare weights after pruning for new model
+    model_state_dict = rename_parameter_keys(model_state_dict)
+    model_state_dict = test_fix_dim_problems(model_state_dict, birdnet.state_dict())
+
+    # prev_conv = False
+    # conv = None
+    # conv_bias = None
+    # for key, value in model_state_dict.items():
+    #     pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[1-9]"
+    #     number_list = re.search(pattern, key)
+        
+    #     if number_list:
+    #         if model_state_dict[key].dim() > 1:
+    #             prev_conv = True 
+    #             conv = (key, value)
+    #             continue
+    #         if conv != None and "bias" in key:
+    #             conv_bias = (key, value)
+    #             continue
+    #         if conv_bias != None and "weight" in key:
+    #             prev_conv = False 
+    #             print(key)
+    #             print(np.shape(model_state_dict[key]))
+    #             create_mask(model_state_dict[key], ratio)
+    #             conv = None 
+    #             conv_bias = None
+
+
+
+    #Load parameter to model
+    birdnet.load_state_dict(model_state_dict)
     
+    print(birdnet)
+    if save_path:
+        retrain(birdnet, criterion, save_path, lr)
 
-    finetune = True 
-    if finetune:
-        analyze = AnalyzeBirdnet(birdnet)
 
-        dataset = CallsDataset()
-        train_size = int(len(dataset) * 0.8)
-        test_size = len(dataset) - train_size
-        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-        train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
-        #Start Training
-        analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                    test_loader=test_loader, save_path="models/birdnet_pruned/", gamma=0.2)
-        analyze.start_training(10)
-    #result = analyze.eval('1dataset/1data/1calls/arcter/')
-    #print(birdnet)
-
-    #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
+def retrain(birdnet, criterion, save_path, lr=0.001):
+    analyze = AnalyzeBirdnet(birdnet)
+    dataset = CallsDataset()
+    train_size = int(len(dataset) * 0.8)
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
+    #Start Training
+    analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
+                                test_loader=test_loader, save_path=save_path, gamma=0.2)
+    analyze.start_training(10)
 
 if __name__ == '__main__':
-    load_model()
+    #prune(ratio=0.7, finetune=False)
+    prune("models/split_dataset/birdnet_final.pt", ratio=0.8, save_path="models/split_dataset_pruned/")
+    #prune(ratio=0.9, finetune=False)
