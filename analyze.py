@@ -9,7 +9,7 @@ import time
 import torch
 import torch.optim as optim
 from torch import nn
-from analyze_birdnet import AnalyzeBirdnet
+from analyze_birdnet import AnalyzeBirdnet, Scaling_Factor_Mode
 import model 
 from torch.utils.data import DataLoader
 from data import CallsDataset
@@ -17,7 +17,7 @@ from pathlib import Path
 from metrics import accuracy
 import argparse
 from utils import audio
-
+import re
 
 
 def main():
@@ -32,6 +32,7 @@ def main():
     parser.add_argument('--gamma', default=0.2)
     parser.add_argument('--eval_file', default='/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/1calls/arcter/XC582288-326656.wav')
     parser.add_argument('--dim_handling', default='PADD')
+    parser.add_argument('--scaling_factors_mode', default='separated', help='Defines if the scaling factors of the resblocks are trained together or separated')
     #Define Random seed for reproducibility
     torch.cuda.manual_seed(1337)
     torch.manual_seed(73)
@@ -87,7 +88,9 @@ def main():
         #Start Training
         analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
                                     test_loader=test_loader, save_path=args.save_path, gamma=gamma)
-        analyze.start_training(int(args.epochs))
+        scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
+
+        analyze.start_training(int(args.epochs), scaling_factor_mode)
     elif (mode == 'eval'):
         analyze = AnalyzeBirdnet(birdnet=birdnet)
         result = analyze.eval(args.eval_file)

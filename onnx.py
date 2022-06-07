@@ -5,7 +5,7 @@ import torch
 from torch import optim 
 from torch import nn 
 
-path = "models/split_dataset_pruned/birdnet_final.pt"
+path = "models/carp/birdnet_final.pt"
 skip_handling = model.Skip_Handling.PADD
 checkpoint = torch.load(path)
 filters = checkpoint['filters']

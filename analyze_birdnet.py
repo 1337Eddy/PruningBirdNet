@@ -1,8 +1,9 @@
-
+import re
 import os
+from enum import Enum
 import torch
 import torch.optim as optim
-from torch import nn, threshold
+from torch import nn, tensor, threshold
 import model 
 from torch.autograd import Variable
 from data import labels_to_one_hot_encondings as map_labels
@@ -14,6 +15,10 @@ from metrics import AverageMeter
 from metrics import accuracy
 import monitor
 from utils import audio
+
+class Scaling_Factor_Mode(Enum):
+    TOGETHER = 0
+    SEPARATE = 1
 
 
 
@@ -41,15 +46,34 @@ class AnalyzeBirdnet():
         self.criterion = nn.CrossEntropyLoss().cuda()
         self.birdnet = birdnet
         self.optimizer = optim.Adam(self.birdnet.parameters(), lr=self.lr) 
+        self.delta = 0.0005
 
     def sum_scaling_parameters(self):
+        sum = 0
+        fun = nn.Softmax(dim=0)
+        for param in self.birdnet.parameters():
+            if np.shape(param) == torch.Size([2]):
+                scaling_factors = fun(param)
+                sum += scaling_factors[0]
+
+        # for resstack in self.birdnet.module.classifier:
+        #     if isinstance(resstack, model.ResStack):
+        #         for resblock in resstack.classifier:
+        #             if isinstance(resblock, model.Resblock):          
+        #                 sum += torch.abs(resblock.W[0].cpu())
+        sum.cuda()
+        return sum
+    
+    #TODO Derzeitige implementierung trägt nichts zur Backpropagation bei
+    def sum_conv_layer_scaling_factors(self):
         sum = 0
         for resstack in self.birdnet.module.classifier:
             if isinstance(resstack, model.ResStack):
                 for resblock in resstack.classifier:
-                    if isinstance(resblock, model.Resblock):          
-                        sum += torch.abs(resblock.W[0].cpu())
-        sum.cuda()
+                    if isinstance(resblock, model.Resblock):       
+                        sum += torch.sum(torch.abs(resblock.classifier[3].weight.cpu()))
+                        sum += torch.sum(torch.abs(resblock.classifier[7].weight.cpu()))
+        sum.cuda()       
         return sum
 
     def prepare_data_and_labels(self, data, target):
@@ -83,9 +107,11 @@ class AnalyzeBirdnet():
             self.optimizer.zero_grad()
             loss = self.criterion(output.float(), target.float())
 
-            sum = self.sum_scaling_parameters()
-            
-            loss = loss + self.gamma * sum
+            sum_scaling_factors = self.sum_scaling_parameters()
+
+            sum_channel_factors = self.sum_conv_layer_scaling_factors()
+
+            loss = loss + self.gamma * sum_scaling_factors + self.delta * sum_channel_factors
             loss.backward()
             self.optimizer.step()
             #Calculate and update metrics
@@ -116,8 +142,10 @@ class AnalyzeBirdnet():
             output = np.squeeze(output)
             loss = self.criterion(output.float(), target.float())
 
-            sum = self.sum_scaling_parameters()
-            loss = loss + self.gamma * sum
+            sum_scaling_factors = self.sum_scaling_parameters()
+            sum_channel_factors = self.sum_conv_layer_scaling_factors()
+
+            loss = loss + self.gamma * sum_scaling_factors + self.delta * sum_channel_factors
 
             #Calculate and update metrics
             losses.update(loss.item(), data.size(0))
@@ -141,11 +169,19 @@ class AnalyzeBirdnet():
                 'loss': val_loss,
                 'accuracy': val_top1
                 }, path)
+    
+    def freeze_scaling_factors(self, bool=True):
+        for param in self.birdnet.parameters():
+            if np.shape(param) == torch.Size([2]):
+                param.requires_grad = bool
+            elif np.shape(param) != torch.Size([]):
+                param.requires_grad = not bool
+
 
     """
     Train loop that trains the model for some epochs and handels learning rate reduction and checkpoint save
     """
-    def start_training(self, epochs):
+    def start_training(self, epochs, scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
         self.birdnet.train()
         monitoring = monitor.Monitor(self.loss_patience, self.early_stopping)
         version = 0
@@ -155,6 +191,8 @@ class AnalyzeBirdnet():
         test_acc_list = []
 
         for i in range(0, epochs):
+            if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE:
+                self.freeze_scaling_factors(i%5==1)
             train_loss, train_top1 = self.train(epoch=i)
             val_loss, val_top1 = self.test()
             train_loss_list.append(train_loss.avg)
