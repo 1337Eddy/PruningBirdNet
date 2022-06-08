@@ -4,13 +4,15 @@ import model
 import torch 
 from torch import optim 
 from torch import nn 
+from torchsummary import summary
 
-path = "models/carp/birdnet_final.pt"
+path = "models/birdnet/birdnet_final.pt"
 skip_handling = model.Skip_Handling.PADD
 checkpoint = torch.load(path)
 filters = checkpoint['filters']
 
 birdnet = model.BirdNet(filters=filters, skip_handling=skip_handling)
+#birdnet = torch.nn.DataParallel(birdnet).cuda()
 birdnet = birdnet.float()
 criterion = nn.CrossEntropyLoss().cuda()
 optimizer = optim.Adam(birdnet.parameters(), lr=0.001) 
@@ -33,8 +35,7 @@ output_names = [ "output1" ]
 pytorch_total_params = sum(p.numel() for p in birdnet.parameters())
 pytorch_trainable_params = sum(p.numel() for p in birdnet.parameters() if p.requires_grad)
 
-print(f"All parameters: {pytorch_total_params}")
-print(f"Trainable parameters: {pytorch_trainable_params}")
-#torch.onnx.export(birdnet, dummy_input, "onnx/birdnet_finetuned_split_dataset.onnx", verbose=True, input_names=input_names, output_names=output_names)
+#summary(birdnet, (1, 64, 512))
+torch.onnx.export(birdnet, dummy_input, "models/birdnet/model.onnx", verbose=True, input_names=input_names, output_names=output_names)
 
 

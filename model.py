@@ -41,7 +41,6 @@ class BirdNet(nn.Module):
         global block_handling 
         channel_handling = skip_handling
         block_handling = handling_block
-        #print('Start initialize Model')
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
         for i in range(1, len(filters) - 1):
             in_channels = filters[i-1][-1][-1]
@@ -89,22 +88,14 @@ class Resblock(nn.Module):
 
     def forward(self, x):
         scaling_factors = self.softmax(self.W)
-        #Basis case: Amount of input channels for Residual Block is equivalent to number of features in the first BatchNorm2d layer in the Block
-        #if (self.in_channels == self.layer_list[0].num_features):
         skip = x 
         skip = torch.mul(skip, scaling_factors[1])
+
         x = self.classifier(x)
-        # else: 
-        #     if (block_handling == Skip_Handling.PADD):
-        #         print("TODO")
 
         if (channel_handling == Skip_Handling.PADD):
             filters_skip = skip.size(dim=1)
             filters_x = x.size(dim=1) 
-            # if (torch.is_tensor(filters_skip)):
-            #     filters_skip = filters_skip.item()
-            # if (torch.is_tensor(filters_x)):
-            #     filters_x = filters_x.item()
 
             diff = abs(filters_x - filters_skip)
             even = True if diff % 2 == 0 else False
@@ -143,7 +134,8 @@ class ResStack(nn.Module):
         resblock_list = []
         for i in range (1, len(num_filters)):
             resblock_list += [Resblock(num_filters=num_filters[i], in_channels=in_channels_resblock, kernel_size=kernel_size)]
-            in_channels_resblock = max(num_filters[i][-1], num_filters[i-1][-1])
+            #in_channels_resblock = max(num_filters[i][-1], num_filters[i-1][-1])
+            in_channels_resblock = num_filters[i][-1]
         resblock_list += [nn.BatchNorm2d(num_features=num_filters[-1][-1])]
         resblock_list += [nn.ReLU(True)]
 
