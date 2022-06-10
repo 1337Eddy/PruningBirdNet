@@ -23,67 +23,12 @@ from utils import audio
 import re
 
 
-# filters = [[[32]], 
-# [[16, 16, 32], [64, 64], [64, 64], [64, 64]], 
-# [[32, 32, 64], [128, 128], [128, 128], [128, 128]], 
-# [[64, 64, 128], [256, 256], [256, 256], [256, 256]], 
-# [[128, 128, 256], [512, 512], [512, 512], [512, 512]],
-# [512, 512, 83]]
+def rename_parameter_keys(new_state_dict, state_dict):
+    model_state_dict = OrderedDict()
+    for (_, value), (key, _) in zip(new_state_dict.items(), state_dict.items()):
+        model_state_dict[key] = value
 
-
-def rename_parameter_keys(model_state_dict):
-    """
-    Pytorch stores the parameters in a OrderdDict with specific key names
-    After removing parameters from the model, the names have to be rearranged because the continous
-    numbering of pytorch is broken otherwise
-    """
-    key_list = []
-    for key, item in model_state_dict.items():
-        key_list.append((key, item))
-
-
-    new_model_state_dict = OrderedDict()
-    counter = 0
-    last = None
-    stack_counter = 1
-    for i in range(0, len(key_list)):
-        pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\."
-        key = key_list[i][0]       
-        number_list = re.search(pattern, key)
-
-        if number_list:
-            incoming = int(key[31])
-            current_stack = int(key[18])
-            if current_stack > stack_counter:
-                stack_counter = current_stack
-                counter = 0
-                last = None 
-  
-            if incoming == counter:
-                new_model_state_dict[key] = model_state_dict[key]
-            elif incoming - 1 == counter and last == None:
-                new_model_state_dict[key] = model_state_dict[key]
-                counter += 1
-            elif incoming == 0:
-                new_model_state_dict[key] = model_state_dict[key]
-                last == None
-                counter = 0
-            elif last == None:
-                counter += 1
-                last = incoming
-                new_key_name = key[:31] + str(counter) + key[32:]
-                new_model_state_dict[new_key_name] = model_state_dict[key]
-            elif last < incoming:
-                counter +=1
-                last = incoming
-                new_key_name = key[:31] + str(counter) + key[32:]
-                new_model_state_dict[new_key_name] = model_state_dict[key]
-            elif last == incoming:
-                new_key_name = key[:31] + str(counter) + key[32:]
-                new_model_state_dict[new_key_name] = model_state_dict[key]
-        else:
-            new_model_state_dict[key] = model_state_dict[key]
-    return new_model_state_dict
+    return model_state_dict
 
 
 def fix_dim_problems(new_state_dict, state_dict):
@@ -96,7 +41,13 @@ def fix_dim_problems(new_state_dict, state_dict):
     return new_state_dict
 
 
-def create_mask(weight1, weight2, channel_ratio, evenly = False):
+def create_mask(weight1, weight2, channel_ratio, evenly=False):
+    """
+    Creates a mask over two batchnorm layer for the values that are dropped and returns 
+    the mask for both layers
+    If evenly is false the channel_ratio percent lowest values from both layers together are pruned
+    If it is true only the channel_ratio percent lowest values from each layer for themselve are pruned
+    """
     weight1 = np.array(weight1.cpu())
     weight2 = np.array(weight2.cpu())
 
@@ -111,12 +62,16 @@ def create_mask(weight1, weight2, channel_ratio, evenly = False):
         ow2 = ordered_weights[len(weight1):]
         ow1 = sorted(ow1, key = lambda x: abs(x[0]))
         ow2 = sorted(ow2, key = lambda x: abs(x[0]))
+        for i in range(0, int(len(ow1) * channel_ratio)):
+            ow1[i][0] = 0
+        for i in range(0, int(len(ow2) * channel_ratio)):
+            ow2[i][0] = 0
         ordered_weights = ow1 + ow2
     else: 
-        ordered_weights = sorted(ordered_weights, key = lambda x: abs(x[0]))
+        ordered_weights = sorted(ordered_weights, key = lambda x: abs(x[0]))   
+        for i in range(0, int(len(ordered_weights) * channel_ratio)):
+            ordered_weights[i][0] = 0
     
-    for i in range(0, int(len(ordered_weights) * channel_ratio)):
-        ordered_weights[i][0] = 0
     ordered_weights = sorted(ordered_weights, key = lambda x: x[1])
     ordered_weights1 = list(filter(lambda x: x[2] == 1, ordered_weights))
     ordered_weights2 = list(filter(lambda x: x[2] == 2, ordered_weights))
@@ -134,50 +89,53 @@ def create_mask(weight1, weight2, channel_ratio, evenly = False):
             mask2.append(False)
     return torch.tensor(mask1), torch.tensor(mask2)
 
+def apply_mask_to_conv_bn_block(mask, conv_bn_pair):
+    conv_weight, conv_bias = conv_bn_pair[0], conv_bn_pair[1]
+    bn_weight, bn_bias, bn_mean, bn_var, _ = conv_bn_pair[2], conv_bn_pair[3], conv_bn_pair[4], conv_bn_pair[5], conv_bn_pair[6]
+
+    conv_bias = (conv_bias[0], torch.masked_select(conv_bias[1], mask))
+    bn_weight = (bn_weight[0], torch.masked_select(bn_weight[1], mask))
+    bn_bias = (bn_bias[0], torch.masked_select(bn_bias[1], mask))
+    bn_mean = (bn_mean[0], torch.masked_select(bn_mean[1], mask))
+    bn_var = (bn_var[0], torch.masked_select(bn_var[1], mask))
+
+    new_size = np.shape(bn_var[1])[0]
+    i = 0
+    buffer = torch.zeros([new_size, np.shape(conv_weight[1])[1], np.shape(conv_weight[1])[2], np.shape(conv_weight[1])[3]])
+    for bool, net in zip(mask, conv_weight[1]):
+        if bool:
+            buffer[i] = net 
+            i += 1
+    conv_weight = (conv_weight[0], buffer)
+    conv_bn_pair = [conv_weight, conv_bias, bn_weight, bn_bias, bn_mean, bn_var]
+
+    return conv_bn_pair, new_size
+
+
 def create_new_channel(conv_bn_pair, channel_ratio, evenly):
-    conv_weight1, conv_bias1 = conv_bn_pair[0], conv_bn_pair[1]
-    bn_weight1, bn_bias1, bn_mean1, bn_var1, _ = conv_bn_pair[2], conv_bn_pair[3], conv_bn_pair[4], conv_bn_pair[5], conv_bn_pair[6]
-    conv_weight2, conv_bias2 = conv_bn_pair[7], conv_bn_pair[8]
-    bn_weight2, bn_bias2, bn_mean2, bn_var2, _ = conv_bn_pair[9], conv_bn_pair[10], conv_bn_pair[11], conv_bn_pair[12], conv_bn_pair[13]
+    bn_weight1 = conv_bn_pair[2]
+    bn_weight2 = conv_bn_pair[9]
 
     mask1, mask2 = create_mask(bn_weight1[1], bn_weight2[1], channel_ratio, evenly)
     mask1 = mask1.cuda()
     mask2 = mask2.cuda()
-    conv_bias1 = (conv_bias1[0], torch.masked_select(conv_bias1[1], mask1))
-    bn_weight1 = (bn_weight1[0], torch.masked_select(bn_weight1[1], mask1))
-    bn_bias1 = (bn_bias1[0], torch.masked_select(bn_bias1[1], mask1))
-    bn_mean1 = (bn_mean1[0], torch.masked_select(bn_mean1[1], mask1))
-    bn_var1 = (bn_var1[0], torch.masked_select(bn_var1[1], mask1))
 
-    conv_bias2 = (conv_bias2[0], torch.masked_select(conv_bias2[1], mask2))
-    bn_weight2 = (bn_weight2[0], torch.masked_select(bn_weight2[1], mask2))
-    bn_bias2 = (bn_bias2[0], torch.masked_select(bn_bias2[1], mask2))
-    bn_mean2 = (bn_mean2[0], torch.masked_select(bn_mean2[1], mask2))
-    bn_var2 = (bn_var2[0], torch.masked_select(bn_var2[1], mask2))
-
-    new_size1 = np.shape(bn_var1[1])[0]
-    i = 0
-    buffer = torch.zeros([new_size1, np.shape(conv_weight1[1])[1], np.shape(conv_weight1[1])[2], np.shape(conv_weight1[1])[3]])
-    for bool, net in zip(mask1, conv_weight1[1]):
-        if bool:
-            buffer[i] = net 
-            i += 1
-    conv_weight1 = (conv_weight1[0], buffer)
-    conv_bn_pair1 = [conv_weight1, conv_bias1, bn_weight1, bn_bias1, bn_mean1, bn_var1]
-
-
-    new_size2 = np.shape(bn_var2[1])[0]
-    i = 0
-    buffer = torch.zeros([new_size2, np.shape(conv_weight2[1])[1], np.shape(conv_weight2[1])[2], np.shape(conv_weight2[1])[3]])
-    for bool, net in zip(mask2, conv_weight2[1]):
-        if bool:
-            buffer[i] = net 
-            i += 1
-    conv_weight2 = (conv_weight2[0], buffer)
-    conv_bn_pair2 = [conv_weight2, conv_bias2, bn_weight2, bn_bias2, bn_mean2, bn_var2]
+    conv_bn_pair1, new_size1 = apply_mask_to_conv_bn_block(mask1, conv_bn_pair[:7])
+    conv_bn_pair2, new_size2 = apply_mask_to_conv_bn_block(mask2, conv_bn_pair[7:])
 
     return (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2)
 
+
+def update_filter_size(filters, new_size, filter_counter):
+    counter = 0
+    for i in range (1, len(filters)- 1):
+        for j in range(1, len(filters[i])):
+            for k in range(0, len(filters[i][j])):
+                if counter == filter_counter:
+                    filters[i][j][k] = new_size
+                    break
+                counter += 1
+    return filters
 
 def prune_channels(model_state_dict, ratio, filters, evenly, channel_ratio):
     conv_bn_pair = []
@@ -196,7 +154,7 @@ def prune_channels(model_state_dict, ratio, filters, evenly, channel_ratio):
         if number_list:
             conv_bn_pair.append((key, value))
             if len(conv_bn_pair) == 14:
-                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_channel(conv_bn_pair, block_ratio * channel_ratio, evenly)
+                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_channel(conv_bn_pair, channel_ratio, evenly)
 
                 for name, value in conv_bn_pair1:
                     model_state_dict[name] = value
@@ -204,23 +162,8 @@ def prune_channels(model_state_dict, ratio, filters, evenly, channel_ratio):
                 for name, value in conv_bn_pair2:
                     model_state_dict[name] = value
 
-                counter = 0
-                for i in range (1, len(filters)- 1):
-                    for j in range(1, len(filters[i])):
-                        for k in range(0, len(filters[i][j])):
-                            if counter == filter_counter:
-                                filters[i][j][k] = new_size1
-                                break
-                            counter += 1
-
-                counter = 0
-                for i in range (1, len(filters)- 1):
-                    for j in range(1, len(filters[i])):
-                        for k in range(0, len(filters[i][j])):
-                            if counter == filter_counter + 1:
-                                filters[i][j][k] = new_size2
-                                break
-                            counter += 1
+                filters = update_filter_size(filters, new_size1, filter_counter)
+                filters = update_filter_size(filters, new_size2, filter_counter + 1)
                 conv_bn_pair = []
                 filter_counter += 2
     return model_state_dict, filters
@@ -263,8 +206,20 @@ def prune_blocks(model_state_dict, filters, ratio):
     
     return model_state_dict, filters
 
+def retrain(birdnet, criterion, save_path, lr=0.001):
+    analyze = AnalyzeBirdnet(birdnet)
+    dataset = CallsDataset()
+    train_size = int(len(dataset) * 0.8)
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
+    #Start Training
+    analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
+                                test_loader=test_loader, save_path=save_path, gamma=0.2)
+    analyze.start_training(30)
 
-def prune(load_path, ratio, lr=0.001, save_path="", evenly=False, channel_ratio=0.9):
+def prune(load_path, ratio, lr=0.001, save_path="", evenly=False, channel_ratio=0.5):
     checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
 
@@ -289,7 +244,7 @@ def prune(load_path, ratio, lr=0.001, save_path="", evenly=False, channel_ratio=
     optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
 
     #Prepare weights after pruning for new model
-    model_state_dict = rename_parameter_keys(model_state_dict)
+    model_state_dict = rename_parameter_keys(model_state_dict, birdnet.state_dict())
     model_state_dict = fix_dim_problems(model_state_dict, birdnet.state_dict())
 
     #Load parameter to model
@@ -300,18 +255,7 @@ def prune(load_path, ratio, lr=0.001, save_path="", evenly=False, channel_ratio=
         retrain(birdnet, criterion, save_path, lr)
 
 
-def retrain(birdnet, criterion, save_path, lr=0.001):
-    analyze = AnalyzeBirdnet(birdnet)
-    dataset = CallsDataset()
-    train_size = int(len(dataset) * 0.8)
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
-    #Start Training
-    analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                test_loader=test_loader, save_path=save_path, gamma=0.2)
-    analyze.start_training(30)
-
 if __name__ == '__main__':
-    prune("models/birdnet/birdnet_final.pt", ratio=0.6, save_path="models/pruned3/") 
+    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.6, evenly=False, channel_ratio=0.0, save_path="models/puned/block_06/") 
+    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.6, save_path="models/puned/channels_06/") 
+    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.6, evenly=False, channel_ratio=0.6, save_path="models/puned/both_06/") 

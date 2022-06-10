@@ -22,7 +22,7 @@ import re
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='eval', help='Set programm into train mode')
+    parser.add_argument('--mode', default='eval', help='Set programm into train or evaluation mode')
     parser.add_argument('--load_model', default='', help='Load model from file')
     parser.add_argument('--epochs', default=20, help='Specify number of epochs for training')
     parser.add_argument('--save_path', default='models/birdnet/', help='Specifies the path where final model and checkpoints are saved')
@@ -30,6 +30,7 @@ def main():
     parser.add_argument('--batch_size', default=16, help='Number of samples for one train batch')
     parser.add_argument('--threads', default=16)
     parser.add_argument('--gamma', default=0.2)
+    parser.add_argument('--delta', default=0.0005)
     parser.add_argument('--eval_file', default='/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/1calls/arcter/XC582288-326656.wav')
     parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--scaling_factors_mode', default='separated', help='Defines if the scaling factors of the resblocks are trained together or separated')
@@ -44,6 +45,7 @@ def main():
     batch_size=args.batch_size
     lr=float(args.lr)
     gamma=float(args.gamma)
+    delta=float(args.delta)
     dim_handling = args.dim_handling
 
     if (dim_handling == "PADD"):
@@ -87,7 +89,7 @@ def main():
 
         #Start Training
         analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                    test_loader=test_loader, save_path=args.save_path, gamma=gamma)
+                                    test_loader=test_loader, save_path=args.save_path, gamma=gamma, delta=delta)
         scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
 
         analyze.start_training(int(args.epochs), scaling_factor_mode)
@@ -103,14 +105,7 @@ def main():
                             {'lr': 0.0001, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'PADD'},
                             {'lr': 0.001, 'gamma': 0.1, 'epochs': 30, 'dim_handling': 'PADD'},
                             {'lr': 0.001, 'gamma': 0.3, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.001, 'gamma': 0.5, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.01, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'SKIP'}, 
-                            {'lr': 0.005, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'SKIP'},
-                            {'lr': 0.001, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'SKIP'},
-                            {'lr': 0.0001, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'SKIP'},
-                            {'lr': 0.001, 'gamma': 0.1, 'epochs': 30, 'dim_handling': 'SKIP'},
-                            {'lr': 0.001, 'gamma': 0.3, 'epochs': 30, 'dim_handling': 'SKIP'},
-                            {'lr': 0.001, 'gamma': 0.5, 'epochs': 30, 'dim_handling': 'SKIP'},]
+                            {'lr': 0.001, 'gamma': 0.5, 'epochs': 30, 'dim_handling': 'PADD'},]
         #Load Data
         dataset = CallsDataset()
         train_size = int(len(dataset) * 0.8)

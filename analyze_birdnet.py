@@ -34,7 +34,10 @@ filters = [[[32]],
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    train_loader=None, test_loader=None, save_path=None, loss_patience=1, early_stopping=2, gamma=0.3):
+                    train_loader=None, test_loader=None, save_path=None, loss_patience=1, early_stopping=2, gamma=0.3, delta=0.0005):
+
+        torch.cuda.manual_seed(1337)
+        torch.manual_seed(73)
         self.gamma=gamma
         self.loss_patience = loss_patience
         self.early_stopping = early_stopping
@@ -46,7 +49,7 @@ class AnalyzeBirdnet():
         self.criterion = nn.CrossEntropyLoss().cuda()
         self.birdnet = birdnet
         self.optimizer = optim.Adam(self.birdnet.parameters(), lr=self.lr) 
-        self.delta = 0.0005
+        self.delta = delta
 
     def sum_scaling_parameters(self):
         sum = 0
