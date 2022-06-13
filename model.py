@@ -68,6 +68,7 @@ Args:
 class Resblock(nn.Module):
     def __init__(self, num_filters, in_channels, kernel_size):
         super(Resblock, self).__init__()
+        self.num_filters = num_filters
         self.in_channels = in_channels
         self.layer_list = [ nn.BatchNorm2d(num_features=in_channels),
                             nn.ReLU(True),
@@ -115,6 +116,11 @@ class Resblock(nn.Module):
                 return x
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
+        mean = torch.mean(x)
+        if abs(mean.item()) > 1:
+            print(self.num_filters)
+            print(torch.mean(skip))
+            print(mean)
         return x
 
 """
@@ -129,6 +135,7 @@ class ResStack(nn.Module):
     def __init__(self, num_filters, in_channels, kernel_size):
         super(ResStack, self).__init__()
         #Num output filters of DownsamlingResBlock
+        self.num_filters = num_filters
         in_channels_resblock = num_filters[0][-1]
         
         resblock_list = []
@@ -145,7 +152,8 @@ class ResStack(nn.Module):
         )
 
     def forward(self, x):
-        return self.classifier(x)
+        x = self.classifier(x)
+        return x
 
 
 """
@@ -182,6 +190,7 @@ class DownsamplingResBlock(nn.Module):
         x = self.classifierPath(x)
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
+        #print(torch.mean(x))
         return x
 
 """
@@ -217,5 +226,10 @@ class ClassificationPath(nn.Module):
         )
 
     def forward(self, x):
-        return self.classifierPath(x)
+        #print(x)
+        print(torch.mean(x))
+        x = self.classifierPath(x)
+        #print(x)
+        print(torch.mean(x))
+        return x
    

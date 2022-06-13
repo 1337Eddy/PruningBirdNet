@@ -35,8 +35,8 @@ def main():
     parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--scaling_factors_mode', default='separated', help='Defines if the scaling factors of the resblocks are trained together or separated')
     #Define Random seed for reproducibility
-    torch.cuda.manual_seed(1337)
-    torch.manual_seed(73)
+    torch.cuda.manual_seed(137)
+    torch.manual_seed(735)
     
     #Assign Arguments
     args = parser.parse_args()

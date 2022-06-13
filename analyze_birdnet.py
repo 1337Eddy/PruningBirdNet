@@ -73,10 +73,10 @@ class AnalyzeBirdnet():
         for resstack in self.birdnet.module.classifier:
             if isinstance(resstack, model.ResStack):
                 for resblock in resstack.classifier:
-                    if isinstance(resblock, model.Resblock):       
+                    if isinstance(resblock, model.Resblock):     
                         sum += torch.sum(torch.abs(resblock.classifier[3].weight.cpu()))
                         sum += torch.sum(torch.abs(resblock.classifier[7].weight.cpu()))
-        sum.cuda()       
+        sum.cuda()  
         return sum
 
     def prepare_data_and_labels(self, data, target):
@@ -143,7 +143,10 @@ class AnalyzeBirdnet():
             #Run model
             output = self.birdnet(data.float())
             output = np.squeeze(output)
+            #print(output)
+            #print(target)
             loss = self.criterion(output.float(), target.float())
+            #print(loss)
 
             sum_scaling_factors = self.sum_scaling_parameters()
             sum_channel_factors = self.sum_conv_layer_scaling_factors()
@@ -154,6 +157,8 @@ class AnalyzeBirdnet():
             losses.update(loss.item(), data.size(0))
             prec = accuracy(output.data, target)
             top1.update(prec, data.size(0))
+            print(loss)
+            exit()
         return losses, top1
 
 
@@ -192,6 +197,13 @@ class AnalyzeBirdnet():
         test_loss_list = []
         train_acc_list = []
         test_acc_list = []
+
+        val_loss, val_top1 = self.test()
+        test_loss_list.append(val_loss.avg)
+        test_acc_list.append(val_top1.avg) 
+        print('\n\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(val_loss=val_loss, val_top1=val_top1))
+        exit()
+        print("Start Training")
 
         for i in range(0, epochs):
             if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE:

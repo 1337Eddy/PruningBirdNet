@@ -22,6 +22,19 @@ import argparse
 from utils import audio
 import re
 
+module_mask_list2 = {}
+
+module_mask_list = []
+
+def apply_mask_to_tensor(mask, new_size, tensor):  
+    buffer = torch.zeros([np.shape(tensor)[0], new_size, np.shape(tensor)[2], np.shape(tensor)[3]])
+    for j in range(0, np.shape(buffer)[0]):
+        i = 0
+        for bool, net in zip(mask, tensor[j]):
+            if bool:
+                buffer[j][i] = net 
+                i += 1
+    return buffer
 
 def rename_parameter_keys(new_state_dict, state_dict):
     model_state_dict = OrderedDict()
@@ -32,6 +45,42 @@ def rename_parameter_keys(new_state_dict, state_dict):
 
 
 def fix_dim_problems(new_state_dict, state_dict):
+    prefix = "module.classifier.1.classifier.2"
+    for key, value in new_state_dict.items():
+        shape = np.shape(state_dict[key])
+        if value.dim() > 1:   
+            if np.shape(new_state_dict[key]) == np.shape(state_dict[key]):
+                new_state_dict[key] = value 
+            else:   
+                name = key[:len("module.classifier.1.classifier.1")]
+                #print(shape)
+                #print(np.shape(value))
+                if name in module_mask_list2:
+                    number = int(key[-8])
+                    if number == 6:
+                        mask = module_mask_list2[name][1]
+                    elif number == 2:
+                        mask = module_mask_list2[name][0]
+                    else:
+                        print("ERROR")
+                        exit()
+                    new_state_dict[key] = apply_mask_to_tensor(mask, shape[1], value)
+                else:             
+                    new_state_dict[key] = apply_mask_to_tensor(module_mask_list[0][1], shape[1], value)
+
+        elif shape != torch.Size([]): 
+            if np.shape(new_state_dict[key]) == np.shape(state_dict[key]):
+                new_state_dict[key] = value 
+            else:
+                if prefix in key or "module.classifier.5" in key:
+                    new_state_dict[key] = torch.masked_select(value, module_mask_list[0][1])
+                else: 
+                    del module_mask_list[0]
+                    new_state_dict[key] = torch.masked_select(value, module_mask_list[0][1])
+                    prefix = key[:len(prefix)]
+    return new_state_dict
+
+def fix_dim_problems1(new_state_dict, state_dict):
     for key, value in new_state_dict.items():
         shape = np.shape(state_dict[key])
         if value.dim() > 1:         
@@ -39,7 +88,6 @@ def fix_dim_problems(new_state_dict, state_dict):
         elif shape != torch.Size([]): 
             new_state_dict[key] = value[:shape[0]]
     return new_state_dict
-
 
 def create_mask(weight1, weight2, channel_ratio, evenly=False):
     """
@@ -109,16 +157,19 @@ def apply_mask_to_conv_bn_block(mask, conv_bn_pair):
     conv_weight = (conv_weight[0], buffer)
     conv_bn_pair = [conv_weight, conv_bias, bn_weight, bn_bias, bn_mean, bn_var]
 
-    return conv_bn_pair, new_size
+    return conv_bn_pair, new_size 
 
 
-def create_new_channel(conv_bn_pair, channel_ratio, evenly):
+def create_new_channel(conv_bn_pair, channel_ratio, evenly, module_name):
     bn_weight1 = conv_bn_pair[2]
     bn_weight2 = conv_bn_pair[9]
 
     mask1, mask2 = create_mask(bn_weight1[1], bn_weight2[1], channel_ratio, evenly)
     mask1 = mask1.cuda()
     mask2 = mask2.cuda()
+
+    module_mask_list.append((module_name, mask2))
+    module_mask_list2[module_name] = (mask1, mask2)
 
     conv_bn_pair1, new_size1 = apply_mask_to_conv_bn_block(mask1, conv_bn_pair[:7])
     conv_bn_pair2, new_size2 = apply_mask_to_conv_bn_block(mask2, conv_bn_pair[7:])
@@ -154,7 +205,7 @@ def prune_channels(model_state_dict, ratio, filters, evenly, channel_ratio):
         if number_list:
             conv_bn_pair.append((key, value))
             if len(conv_bn_pair) == 14:
-                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_channel(conv_bn_pair, channel_ratio, evenly)
+                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_channel(conv_bn_pair, channel_ratio, evenly, number_list[0][:-13])
 
                 for name, value in conv_bn_pair1:
                     model_state_dict[name] = value
@@ -207,17 +258,15 @@ def prune_blocks(model_state_dict, filters, ratio):
     return model_state_dict, filters
 
 def retrain(birdnet, criterion, save_path, lr=0.001):
-    analyze = AnalyzeBirdnet(birdnet)
-    dataset = CallsDataset()
-    train_size = int(len(dataset) * 0.8)
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    train_dataset = CallsDataset("1dataset/1data/calls/train/")
+    test_dataset = CallsDataset("1dataset/1data/calls/test/")
     train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
+
     #Start Training
     analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
                                 test_loader=test_loader, save_path=save_path, gamma=0.2)
-    analyze.start_training(30)
+    analyze.start_training(10)
 
 def prune(load_path, ratio, lr=0.001, save_path="", evenly=False, channel_ratio=0.5):
     checkpoint = torch.load(load_path)
@@ -245,17 +294,49 @@ def prune(load_path, ratio, lr=0.001, save_path="", evenly=False, channel_ratio=
 
     #Prepare weights after pruning for new model
     model_state_dict = rename_parameter_keys(model_state_dict, birdnet.state_dict())
+    print("Start fix dim problems")
     model_state_dict = fix_dim_problems(model_state_dict, birdnet.state_dict())
+    print("Stop fix dim problems")
 
     #Load parameter to model
     birdnet.load_state_dict(model_state_dict)
-    
-    #print(birdnet)
+    #print(birdnet.state_dict()["module.classifier.1.classifier.4.weight"])
+
     if save_path:
         retrain(birdnet, criterion, save_path, lr)
 
 
 if __name__ == '__main__':
-    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.6, evenly=False, channel_ratio=0.0, save_path="models/puned/block_06/") 
-    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.6, save_path="models/puned/channels_06/") 
-    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.6, evenly=False, channel_ratio=0.6, save_path="models/puned/both_06/") 
+    checkpoint = torch.load("models/birdnet_v1/birdnet_final.pt")
+    model_state_dict = checkpoint['model_state_dict']
+
+    #print(model_state_dict['module.classifier.1.classifier.4.weight'])
+    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.03, save_path="models/pruned/channels_01/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.05, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_05/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_10/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.15, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_15/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.2, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_20/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.25, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_25/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.3, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_30/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.4, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_40/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.5, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_50/") 
+
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.05, save_path="models/pruned/channels_05/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.1, save_path="models/pruned/channels_10/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.15, save_path="models/pruned/channels_15/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.2, save_path="models/pruned/channels_20/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.3, save_path="models/pruned/channels_30/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.4, save_path="models/pruned/channels_40/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.5, save_path="models/pruned/channels_50/") 
+
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=True, channel_ratio=0.1, save_path="models/pruned/block_10_channels_10/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.2, evenly=True, channel_ratio=0.2, save_path="models/pruned/block_20_channels_20/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.3, evenly=True, channel_ratio=0.3, save_path="models/pruned/block_30_channels_30/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.4, evenly=True, channel_ratio=0.4, save_path="models/pruned/block_40_channels_40/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.5, evenly=True, channel_ratio=0.5, save_path="models/pruned/block_50_channels_50/") 
+
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.5, evenly=True, channel_ratio=0.1, save_path="models/pruned/block_50_channels_10/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.4, evenly=True, channel_ratio=0.2, save_path="models/pruned/block_40_channels_20/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.3, evenly=True, channel_ratio=0.3, save_path="models/pruned/block_30_channels_30/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.2, evenly=True, channel_ratio=0.4, save_path="models/pruned/block_20_channels_40/") 
+    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=True, channel_ratio=0.5, save_path="models/pruned/block_10_channels_50/") 
