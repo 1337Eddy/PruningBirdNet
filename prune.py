@@ -1,3 +1,4 @@
+import argparse
 from re import L
 from typing import OrderedDict
 import torch
@@ -17,8 +18,8 @@ class Channel_Pruning_Mode(Enum):
     NO_PADD = 1
     MIN = 2
 
-def retrain(birdnet, criterion, save_path, lr=0.001, dataset_path="1dataset/1data/calls/"):
-    data = DataLabels(dataset_path + "train/")
+def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/"):
+    data = DataLabels(dataset_path + "train/",)
 
     train_dataset = CallsDataset(dataset_path + "train/")
     test_dataset = CallsDataset(dataset_path + "test/")
@@ -28,9 +29,9 @@ def retrain(birdnet, criterion, save_path, lr=0.001, dataset_path="1dataset/1dat
     #Start Training
     analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, train_loader=train_loader, 
                                 test_loader=test_loader, save_path=save_path, gamma=0.2)
-    analyze.start_training(10)
+    analyze.start_training(epochs)
 
-def prune(load_path, ratio, lr=0.001, save_path="", mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5):
+def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5):
     checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
 
@@ -51,48 +52,44 @@ def prune(load_path, ratio, lr=0.001, save_path="", mode=Channel_Pruning_Mode.NO
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     #Load parameter to model
     birdnet.load_state_dict(model_state_dict)
-    criterion = nn.CrossEntropyLoss().cuda()
     optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
 
-    if save_path:
-        retrain(birdnet, criterion, save_path, lr)
     return birdnet
 
 
 if __name__ == '__main__':
-    checkpoint = torch.load("models/birdnet_v1/birdnet_final.pt")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--load_path', default='', help='Load model from file')
+    parser.add_argument('--save_path', default='', help='Load model from file')
+    parser.add_argument('--epochs', default=10, help='Specify number of epochs for training')
+    parser.add_argument('--channel_ratio', default=0.4)
+    parser.add_argument('--block_ratio', default=0.4)
+    parser.add_argument('--mode', default="NO_PADD")
+    parser.add_argument('--train_set', default="1dataset/1data/calls/")
+
+
+    args = parser.parse_args()
+    channel_ratio = args.channel_ratio
+    block_ratio = args.block_ratio
+    load_path = args.load_path
+    save_path = args.save_path
+    train_set = args.train_set
+    epochs = args.epochs
+
+    mode = args.mode 
+    if mode == "NO_PADD":
+        mode = Channel_Pruning_Mode.NO_PADD
+    elif mode == "MIN":
+        mode = Channel_Pruning_Mode.MIN
+    else:
+        mode = Channel_Pruning_Mode.EVENLY
+
+    checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
 
-    #print(model_state_dict['module.classifier.1.classifier.4.weight'])
-    prune("models/birdnet/birdnet_final.pt", ratio=0.20, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.3, save_path="models/pruned/block20_channel30/") 
+    birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=channel_ratio) 
 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.05, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_05/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_10/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.2, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_20/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.3, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_30/") 
-    #prune("models/birdnet_v1/birdnet_final.pt", ratio=0.4, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_40/") 
-    #prune("models/birdnet_v1/birdnet_final.pt", ratio=0.5, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_50/") 
-    #prune("models/birdnet_v1/birdnet_final.pt", ratio=0.6, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_60/") 
-    #prune("models/birdnet_v1/birdnet_final.pt", ratio=0.7, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_70/") 
-    #prune("models/birdnet_v1/birdnet_final.pt", ratio=0.8, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_80/") 
-    #prune("models/birdnet_v1/birdnet_final.pt", ratio=0.9, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_90/") 
 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.05, save_path="models/pruned/channels_05/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.1, save_path="models/pruned/channels_10/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.15, save_path="models/pruned/channels_15/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.2, save_path="models/pruned/channels_20/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.3, save_path="models/pruned/channels_30/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.4, save_path="models/pruned/channels_40/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, evenly=True, channel_ratio=0.5, save_path="models/pruned/channels_50/") 
-
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=True, channel_ratio=0.1, save_path="models/pruned/block_10_channels_10/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.2, evenly=True, channel_ratio=0.2, save_path="models/pruned/block_20_channels_20/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.3, evenly=True, channel_ratio=0.3, save_path="models/pruned/block_30_channels_30/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.4, evenly=True, channel_ratio=0.4, save_path="models/pruned/block_40_channels_40/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.5, evenly=True, channel_ratio=0.5, save_path="models/pruned/block_50_channels_50/") 
-
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.5, evenly=True, channel_ratio=0.1, save_path="models/pruned/block_50_channels_10/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.4, evenly=True, channel_ratio=0.2, save_path="models/pruned/block_40_channels_20/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.3, evenly=True, channel_ratio=0.3, save_path="models/pruned/block_30_channels_30/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.2, evenly=True, channel_ratio=0.4, save_path="models/pruned/block_20_channels_40/") 
-    # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=True, channel_ratio=0.5, save_path="models/pruned/block_10_channels_50/") 
+    if save_path:
+        criterion = nn.CrossEntropyLoss().cuda()
+        retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs)
