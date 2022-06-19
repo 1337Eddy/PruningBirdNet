@@ -3,26 +3,10 @@ from torch.utils.data import Dataset
 from utils.audio import get_spec, openAudioFile
 import os
 import numpy as np
-path = "1dataset/1data/1calls/"
-
-
-birds = os.listdir(path)
-birds = sorted(birds)
-
-bird_dict = {x: birds.index(x) for x in birds}
-
-def labels_to_one_hot_encondings(labels):
-    result = np.zeros((len(labels), len(birds)))
-    for i in range(0, len(labels)):
-        result[i][bird_dict[labels[i]]] = 1
-    return result
-
-def id_to_label(id):
-    return list(bird_dict)[id]
 
 
 class CallsDataset(Dataset):
-    def __init__(self, path=path):
+    def __init__(self, path):
         self.path = path
         self.paths = self.__load_paths__()
 

@@ -11,30 +11,22 @@ class Skip_Handling(Enum):
     CUT = 1
     SKIP = 2
 
-FILTERS = [8, 16, 32, 64, 128]
 KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
-RESNET_K = 4
-RESNET_N = 3
-num_classes = 83
-filters = [[[32]], 
-[[16, 16, 32], [64, 64], [64, 64], [64, 64]], 
-[[32, 32, 64], [128, 128], [128, 128], [128, 128]], 
-[[64, 64, 128], [256, 256], [256, 256], [256, 256]], 
-[[128, 128, 256], [512, 512], [512, 512], [512, 512]],
-[512, 512, num_classes]]
 
 
-filtertest = {
-    'Input': 32,
-    'Resstack 1': {'DSBlock': [16, 16, 32], 'Resblock 1': [64, 64], 'Resblock 2': [64, 64], 'Resblock 3': [64, 64]},
-    'Resstack 2': {'DSBlock': [32, 32, 64], 'Resblock 1': [128, 128], 'Resblock 2': [128, 128], 'Resblock 3': [128, 128]},
-    'Resstack 3': {'DSBlock': [64, 64, 128], 'Resblock 1': [256, 256], 'Resblock 2': [256, 256], 'Resblock 3': [256, 256]},
-    'Resstack 4': {'DSBlock': [128, 128, 256], 'Resblock 1': [512, 512], 'Resblock 2': [512, 512], 'Resblock 3': [512, 512]},
-    'Output': [512, 512, num_classes]
-}
+
+
+# filtertest = {
+#     'Input': 32,
+#     'Resstack 1': {'DSBlock': [16, 16, 32], 'Resblock 1': [64, 64], 'Resblock 2': [64, 64], 'Resblock 3': [64, 64]},
+#     'Resstack 2': {'DSBlock': [32, 32, 64], 'Resblock 1': [128, 128], 'Resblock 2': [128, 128], 'Resblock 3': [128, 128]},
+#     'Resstack 3': {'DSBlock': [64, 64, 128], 'Resblock 1': [256, 256], 'Resblock 2': [256, 256], 'Resblock 3': [256, 256]},
+#     'Resstack 4': {'DSBlock': [128, 128, 256], 'Resblock 1': [512, 512], 'Resblock 2': [512, 512], 'Resblock 3': [512, 512]},
+#     'Output': [512, 512, num_classes]
+# }
 
 class BirdNet(nn.Module):
-    def __init__(self, filters=filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD):
+    def __init__(self, filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD):
         super(BirdNet, self).__init__()
 
         global channel_handling
@@ -106,7 +98,6 @@ class Resblock(nn.Module):
                 skip = F.pad(input=skip, pad=(0,0,0,0, pad_up, pad_down), mode='constant', value=0)
             else:
                 skip = skip[:,:filters_x,:,:] 
-                #x = F.pad(input=x, pad=(0,0,0,0,pad_up, pad_down), mode='constant',value=0)
             assert np.shape(x) == np.shape(skip)                    
 
         elif (channel_handling == Skip_Handling.CUT):
@@ -116,11 +107,6 @@ class Resblock(nn.Module):
                 return x
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
-        mean = torch.mean(x)
-        if abs(mean.item()) > 1:
-            print(self.num_filters)
-            print(torch.mean(skip))
-            print(mean)
         return x
 
 """
@@ -190,7 +176,6 @@ class DownsamplingResBlock(nn.Module):
         x = self.classifierPath(x)
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
-        #print(torch.mean(x))
         return x
 
 """
@@ -226,10 +211,6 @@ class ClassificationPath(nn.Module):
         )
 
     def forward(self, x):
-        #print(x)
-        print(torch.mean(x))
         x = self.classifierPath(x)
-        #print(x)
-        print(torch.mean(x))
         return x
    

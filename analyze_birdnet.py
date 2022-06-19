@@ -6,8 +6,7 @@ import torch.optim as optim
 from torch import nn, tensor, threshold
 import model 
 from torch.autograd import Variable
-from data import labels_to_one_hot_encondings as map_labels
-from data import id_to_label
+
 import numpy as np
 from torchsummary import summary
 from pathlib import Path
@@ -22,22 +21,16 @@ class Scaling_Factor_Mode(Enum):
 
 
 
-num_classes = 83
 threshold = 0.5
 
-filters = [[[32]], 
-[[16, 16, 32], [64, 64], [64, 64], [64, 64]], 
-[[32, 32, 64], [128, 128], [128, 128], [128, 128]], 
-[[64, 64, 128], [256, 256], [256, 256], [256, 256]], 
-[[128, 128, 256], [512, 512], [512, 512], [512, 512]],
-[512, 512, num_classes]]
 
 class AnalyzeBirdnet():
-    def __init__(self, birdnet, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    train_loader=None, test_loader=None, save_path=None, loss_patience=1, early_stopping=2, gamma=0.3, delta=0.0005):
+    def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
+                    train_loader=None, test_loader=None, save_path=None, loss_patience=1, early_stopping=2, gamma=0.5, delta=0.5):
 
         torch.cuda.manual_seed(1337)
         torch.manual_seed(73)
+        self.dataset = dataset
         self.gamma=gamma
         self.loss_patience = loss_patience
         self.early_stopping = early_stopping
@@ -52,32 +45,33 @@ class AnalyzeBirdnet():
         self.delta = delta
 
     def sum_scaling_parameters(self):
+        counter = 0
         sum = 0
         fun = nn.Softmax(dim=0)
         for param in self.birdnet.parameters():
             if np.shape(param) == torch.Size([2]):
                 scaling_factors = fun(param)
                 sum += scaling_factors[0]
-
-        # for resstack in self.birdnet.module.classifier:
-        #     if isinstance(resstack, model.ResStack):
-        #         for resblock in resstack.classifier:
-        #             if isinstance(resblock, model.Resblock):          
-        #                 sum += torch.abs(resblock.W[0].cpu())
+                counter += 1
         sum.cuda()
-        return sum
+        return sum, counter
     
-    #TODO Derzeitige implementierung trägt nichts zur Backpropagation bei
+
     def sum_conv_layer_scaling_factors(self):
+        counter = 0
         sum = 0
         for resstack in self.birdnet.module.classifier:
             if isinstance(resstack, model.ResStack):
                 for resblock in resstack.classifier:
-                    if isinstance(resblock, model.Resblock):     
-                        sum += torch.sum(torch.abs(resblock.classifier[3].weight.cpu()))
-                        sum += torch.sum(torch.abs(resblock.classifier[7].weight.cpu()))
+                    if isinstance(resblock, model.Resblock): 
+                        fst_layer = resblock.classifier[3].weight.cpu()
+                        snd_layer = resblock.classifier[7].weight.cpu()
+                        sum += torch.sum(torch.abs(fst_layer))
+                        sum += torch.sum(torch.abs(snd_layer))
+                        counter += len(fst_layer)
+                        counter += len(snd_layer)
         sum.cuda()  
-        return sum
+        return sum, counter
 
     def prepare_data_and_labels(self, data, target):
         """
@@ -85,12 +79,24 @@ class AnalyzeBirdnet():
         """
         data = data.cuda(non_blocking=True)    
         data = Variable(data)       
-        target = map_labels(target)
+        target = self.dataset.labels_to_one_hot_encondings(target)
         target= torch.from_numpy(target)
         target = target.cuda(non_blocking=True)
         target = Variable(target)
         return data, target
 
+
+    def calc_loss(self, output, target):
+        loss = self.criterion(output.float(), target.float())
+        sum_scaling_factors, num_scaling_factors  = self.sum_scaling_parameters()
+        sum_channel_factors, num_channel_factors = self.sum_conv_layer_scaling_factors()
+
+        loss_scaling_factors = self.gamma * sum_scaling_factors / num_scaling_factors
+        loss_channel_factors = (1-self.gamma) * sum_channel_factors / num_channel_factors
+
+        loss = self.delta * (loss_scaling_factors + loss_channel_factors) + (1-self.delta) * loss 
+
+        return loss
     """
     Trains model for one epoch with given dataloader
     """
@@ -108,13 +114,8 @@ class AnalyzeBirdnet():
             output = self.birdnet(data.float())
             output = np.squeeze(output)
             self.optimizer.zero_grad()
-            loss = self.criterion(output.float(), target.float())
 
-            sum_scaling_factors = self.sum_scaling_parameters()
-
-            sum_channel_factors = self.sum_conv_layer_scaling_factors()
-
-            loss = loss + self.gamma * sum_scaling_factors + self.delta * sum_channel_factors
+            loss = self.calc_loss(output, target)
             loss.backward()
             self.optimizer.step()
             #Calculate and update metrics
@@ -143,27 +144,18 @@ class AnalyzeBirdnet():
             #Run model
             output = self.birdnet(data.float())
             output = np.squeeze(output)
-            #print(output)
-            #print(target)
-            loss = self.criterion(output.float(), target.float())
-            #print(loss)
 
-            sum_scaling_factors = self.sum_scaling_parameters()
-            sum_channel_factors = self.sum_conv_layer_scaling_factors()
-
-            loss = loss + self.gamma * sum_scaling_factors + self.delta * sum_channel_factors
+            loss = self.calc_loss(output, target)
 
             #Calculate and update metrics
             losses.update(loss.item(), data.size(0))
             prec = accuracy(output.data, target)
             top1.update(prec, data.size(0))
-            print(loss)
-            exit()
         return losses, top1
 
 
     def save_model(self, epochs, birdnet, optimizer, val_loss, val_top1, 
-                train_loss_list, test_loss_list, train_acc_list, test_acc_list, path, filters=filters):
+                train_loss_list, test_loss_list, train_acc_list, test_acc_list, path, filters):
         Path(path[:-len(path.split('/')[-1])]).mkdir(parents=True, exist_ok=True)
         torch.save({
                 'train_loss_list': train_loss_list,
@@ -202,7 +194,6 @@ class AnalyzeBirdnet():
         test_loss_list.append(val_loss.avg)
         test_acc_list.append(val_top1.avg) 
         print('\n\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(val_loss=val_loss, val_top1=val_top1))
-        exit()
         print("Start Training")
 
         for i in range(0, epochs):
@@ -217,7 +208,10 @@ class AnalyzeBirdnet():
 
             print('epoch: {:d} \ntrain loss avg: {train_loss.avg:.4f}, accuracy avg: {train_top1.avg:.4f}\t'
                   '\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(i, train_loss=train_loss,train_top1=train_top1, val_loss=val_loss, val_top1=val_top1))
-            status = monitoring.update(val_loss.avg, lr=self.lr)
+            
+            if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE and i%5 != 1:
+                status = monitoring.update(val_loss.avg, lr=self.lr)
+            
             if (status == monitor.Status.LEARNING_RATE):
                 self.lr *= 0.5
             elif (status == monitor.Status.STOP):
@@ -260,7 +254,7 @@ class AnalyzeBirdnet():
                         estimation = self.softmax(np.array(pred.cpu().detach()))
                         index = np.argmax(estimation)
                         if estimation[index] > threshold:
-                            prediction = id_to_label(index)
+                            prediction = self.dataset.id_to_label(index)
                             predictions += [(time_0, time_0 + seconds, prediction, estimation[index])]
                             time_0 += seconds - overlap
                         else: 
@@ -275,13 +269,13 @@ class AnalyzeBirdnet():
                         batch = batch.cuda(non_blocking=True)
                         output = self.birdnet(batch.float())   
                         output = torch.squeeze(output)
-                        if (np.shape(output) == torch.Size([num_classes])):
+                        if (np.shape(output) == torch.Size([self.dataset.num_classes])):
                             output = output[None, :]
                         for pred in output:
                             estimation = self.softmax(np.array(pred.cpu().detach()))
                             index = np.argmax(estimation)
                             if estimation[index] > threshold:
-                                prediction = id_to_label(index)
+                                prediction = self.datasetid_to_label(index)
                                 predictions += [(time_0, time_0 + seconds, prediction, estimation[index])]
                                 time_0 += seconds - overlap
                             else: 

@@ -8,9 +8,8 @@ from torch import nn
 from prune import Channel_Pruning_Mode
 
 
-module_mask_list2 = {}
+module_mask_list = {}
 
-module_mask_list = []
 
 def apply_mask_to_tensor(mask, new_size, tensor):  
     buffer = torch.zeros([np.shape(tensor)[0], new_size, np.shape(tensor)[2], np.shape(tensor)[3]])
@@ -31,7 +30,7 @@ def rename_parameter_keys(new_state_dict, state_dict):
 
 
 def get_mask_to_key(key):
-    key_names = list(module_mask_list2)
+    key_names = list(module_mask_list)
     pattern_ds_block = "module\.classifier\.[0-9]+\.classifier\.[0-9]\.(classifierPath|skipPath)"
     pattern_resblock = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[0-9]+\."
     pattern_resstack_appendix = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\."
@@ -47,7 +46,7 @@ def get_mask_to_key(key):
         if ds_block:
             if key[resstack_index] == name[resstack_index]:
                 index_key = key_names[i-1]
-                mask = module_mask_list2[index_key][1]
+                mask = module_mask_list[index_key][1]
                 return mask
             else:
                 continue
@@ -56,22 +55,22 @@ def get_mask_to_key(key):
                 resblock_layer_number = int(key[resblock_layer_index])
                 if resblock_layer_number < 4:
                     index_key = key_names[i-1]
-                    mask = module_mask_list2[index_key][1]
+                    mask = module_mask_list[index_key][1]
                 else: 
-                    mask = module_mask_list2[name][0]
+                    mask = module_mask_list[name][0]
                 return mask
             else: 
                 continue
         elif resstack_appendix:
             if int(key[resstack_index]) + 1 == int(name[resstack_index]):
                 index_key = key_names[i-1]
-                mask = module_mask_list2[index_key][1]
+                mask = module_mask_list[index_key][1]
                 return mask
             else:
                 continue
     index_key = key_names[-1]
 
-    mask = module_mask_list2[index_key][1]
+    mask = module_mask_list[index_key][1]
     return mask 
 
 def fix_dim_problems(new_state_dict, state_dict):
@@ -103,7 +102,7 @@ def isZero(values):
             return False 
     return True
 
-def create_mask(weight1, weight2, channel_ratio, mode=Channel_Pruning_Mode.MIN):
+def create_mask(weight1, weight2, channel_ratio, mode):
     """
     Creates a mask over two batchnorm layer for the values that are dropped and returns 
     the mask for both layers
@@ -200,8 +199,7 @@ def create_new_channel(conv_bn_pair, channel_ratio, mode, module_name):
     mask1 = mask1.cuda()
     mask2 = mask2.cuda()
 
-    module_mask_list.append((module_name, mask2))
-    module_mask_list2[module_name] = (mask1, mask2)
+    module_mask_list[module_name] = (mask1, mask2)
 
     conv_bn_pair1, new_size1 = apply_mask_to_conv_bn_block(mask1, conv_bn_pair[:7])
     conv_bn_pair2, new_size2 = apply_mask_to_conv_bn_block(mask2, conv_bn_pair[7:])

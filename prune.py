@@ -3,6 +3,7 @@ from typing import OrderedDict
 import torch
 import torch.optim as optim
 from torch import device, nn, softmax, threshold
+from analyze import DataLabels
 from analyze_birdnet import AnalyzeBirdnet
 import model 
 from torch.utils.data import DataLoader
@@ -16,14 +17,16 @@ class Channel_Pruning_Mode(Enum):
     NO_PADD = 1
     MIN = 2
 
-def retrain(birdnet, criterion, save_path, lr=0.001):
-    train_dataset = CallsDataset("1dataset/1data/calls/train/")
-    test_dataset = CallsDataset("1dataset/1data/calls/test/")
+def retrain(birdnet, criterion, save_path, lr=0.001, dataset_path="1dataset/1data/calls/"):
+    data = DataLabels(dataset_path + "train/")
+
+    train_dataset = CallsDataset(dataset_path + "train/")
+    test_dataset = CallsDataset(dataset_path + "test/")
     train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
 
     #Start Training
-    analyze = AnalyzeBirdnet(birdnet=birdnet, lr=lr, criterion=criterion, train_loader=train_loader, 
+    analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, train_loader=train_loader, 
                                 test_loader=test_loader, save_path=save_path, gamma=0.2)
     analyze.start_training(10)
 
@@ -61,7 +64,7 @@ if __name__ == '__main__':
     model_state_dict = checkpoint['model_state_dict']
 
     #print(model_state_dict['module.classifier.1.classifier.4.weight'])
-    prune("models/birdnet_v1/birdnet_final.pt", ratio=0.0, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.1, save_path="models/pruned/test_block20_channel30/") 
+    prune("models/birdnet/birdnet_final.pt", ratio=0.20, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.3, save_path="models/pruned/block20_channel30/") 
 
     # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.05, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_05/") 
     # prune("models/birdnet_v1/birdnet_final.pt", ratio=0.1, evenly=False, channel_ratio=0.0, save_path="models/pruned/block_10/") 

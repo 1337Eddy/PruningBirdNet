@@ -12,7 +12,6 @@ RANDOM = np.random.RandomState(1337)
 CACHE = {}
 
 def openAudioFile(path, sample_rate=44100, offset=0.0, duration=None):
-    
     # Open file with librosa (uses ffmpeg or libav)
     sig, rate = librosa.load(path, sr=sample_rate, offset=offset, duration=duration, mono=True, res_type='kaiser_fast')
 
