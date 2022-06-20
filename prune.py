@@ -69,12 +69,12 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
-    channel_ratio = args.channel_ratio
-    block_ratio = args.block_ratio
+    channel_ratio = float(args.channel_ratio)
+    block_ratio = float(args.block_ratio)
     load_path = args.load_path
     save_path = args.save_path
     train_set = args.train_set
-    epochs = args.epochs
+    epochs = int(args.epochs)
 
     mode = args.mode 
     if mode == "NO_PADD":
