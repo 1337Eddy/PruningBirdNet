@@ -2,17 +2,20 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import model 
+from torch import nn
 
 def prune_blocks(model_state_dict, filters, ratio):
     remove_index = []
     remove_list = []
-
+    softmax = nn.Softmax(dim=0)
     #Create list of scaling factors to remove the least important
     scaling_factors = []
     for i in range(1, len(filters) - 1):
         for j in range (1, len(filters[i])):
             name = f"module.classifier.{i}.classifier.{j}."
-            scaling_factors.append((model_state_dict[name + "W"]))
+            W = model_state_dict[name + "W"]
+            W = softmax(W)
+            scaling_factors.append(W)
 
     scaling_factors = sorted(scaling_factors, key=lambda x: x[1])
 
