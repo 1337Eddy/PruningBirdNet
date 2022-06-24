@@ -61,7 +61,7 @@ def rename_parameter_keys(new_state_dict, state_dict):
     return model_state_dict
 
 def prune(model_state_dict, filters, ratio):
-    print("prune blocks")
+    #print("prune blocks")
     model_state_dict, filters = prune_blocks(model_state_dict, filters, ratio)
     #Build new pruned model
     birdnet = model.BirdNet(filters=filters)

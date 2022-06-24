@@ -11,12 +11,12 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch import nn
-from analyze_birdnet import AnalyzeBirdnet, Scaling_Factor_Mode
+from train_birdnet import AnalyzeBirdnet, Scaling_Factor_Mode
 import model 
 from torch.utils.data import DataLoader
-from data import CallsDataset
+from data.data import CallsDataset
 from pathlib import Path
-from metrics import accuracy
+from utils.metrics import accuracy
 import argparse
 from utils import audio
 import re

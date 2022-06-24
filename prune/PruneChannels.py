@@ -1,4 +1,6 @@
 from collections import OrderedDict
+from threading import ThreadError
+from xxlimited import new
 import model
 import re
 
@@ -48,7 +50,7 @@ def get_mask_to_key(key):
                 index_key = key_names[i-1]
                 mask = module_mask_list[index_key][1]
                 return mask
-            else:
+            else: 
                 continue
         elif resblock:
             if key[resstack_index] == name[resstack_index] and key[resblock_index] == name[resblock_index]:
@@ -66,7 +68,7 @@ def get_mask_to_key(key):
                 index_key = key_names[i-1]
                 mask = module_mask_list[index_key][1]
                 return mask
-            else:
+            else: 
                 continue
     index_key = key_names[-1]
 
@@ -77,7 +79,6 @@ def fix_dim_problems(new_state_dict, state_dict):
     prefix = "module.classifier.1.classifier.2"
     for key, value in new_state_dict.items():
         shape = np.shape(state_dict[key])
-
         if value.dim() > 1:   
             if np.shape(new_state_dict[key]) == np.shape(state_dict[key]):
                 new_state_dict[key] = value 
@@ -91,7 +92,6 @@ def fix_dim_problems(new_state_dict, state_dict):
             else:
                 mask = get_mask_to_key(key)
                 new_state_dict[key] = torch.masked_select(value, mask)
-
         assert np.shape(new_state_dict[key]) == shape
     return new_state_dict
 
@@ -118,7 +118,7 @@ def create_mask(weight1, weight2, channel_ratio, mode):
     for i in range(0, len(weight2)):
         ordered_weights.append([weight2[i], len(weight1) + i, 2])
 
-    if mode == Channel_Pruning_Mode.EVENLY:
+    if mode.value == 0: #EVENLY
         ow1 = ordered_weights[:len(weight1)]
         ow2 = ordered_weights[len(weight1):]
         ow1 = sorted(ow1, key = lambda x: abs(x[0]))
@@ -128,7 +128,7 @@ def create_mask(weight1, weight2, channel_ratio, mode):
         for i in range(0, int(len(ow2) * channel_ratio)):
             ow2[i][0] = 0
         ordered_weights = ow1 + ow2
-    elif mode == Channel_Pruning_Mode.NO_PADD:
+    elif mode.value == 1: #NO_PADD
         ow1 = ordered_weights[:len(weight1)]
         ow2 = ordered_weights[len(weight1):]
         ow1 = sorted(ow1, key = lambda x: abs(x[0]))
@@ -136,10 +136,12 @@ def create_mask(weight1, weight2, channel_ratio, mode):
         for i in range(0, int(len(ow1) * channel_ratio)):
             ow1[i][0] = 0
         ordered_weights = ow1 + ow2
-    else: 
+    elif mode.value == 2: #MIN
         ordered_weights = sorted(ordered_weights, key = lambda x: abs(x[0]))   
         for i in range(0, int(len(ordered_weights) * channel_ratio)):
             ordered_weights[i][0] = 0
+    else: 
+        raise RuntimeError(f'mode {mode} doesnt exist')
     
     ordered_weights = sorted(ordered_weights, key = lambda x: x[1])
     ordered_weights1 = list(filter(lambda x: x[2] == 1, ordered_weights))
@@ -251,7 +253,7 @@ def prune_channels(model_state_dict, ratio, filters, mode, channel_ratio):
 
 
 def prune(model_state_dict, ratio, filters, mode, channel_ratio):
-    print("prune channels")
+    #print("prune channels")
     model_state_dict, filters = prune_channels(model_state_dict, ratio, filters, mode, channel_ratio)
     #Build new pruned model
     birdnet = model.BirdNet(filters=filters)

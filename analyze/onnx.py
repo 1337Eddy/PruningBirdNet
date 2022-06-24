@@ -6,7 +6,7 @@ from torch import optim
 from torch import nn 
 from torchsummary import summary
 
-path = "models/birdnet/birdnet_final.pt"
+path = "models/birdnet/pruned/test3/birdnet_final.pt"
 skip_handling = model.Skip_Handling.PADD
 checkpoint = torch.load(path)
 filters = checkpoint['filters']
@@ -36,6 +36,6 @@ pytorch_total_params = sum(p.numel() for p in birdnet.parameters())
 pytorch_trainable_params = sum(p.numel() for p in birdnet.parameters() if p.requires_grad)
 
 #summary(birdnet, (1, 64, 512))
-torch.onnx.export(birdnet, dummy_input, "models/birdnet/model.onnx", verbose=True, input_names=input_names, output_names=output_names)
+torch.onnx.export(birdnet, dummy_input, "onnx/channel_pruned_no_padd.onnx", verbose=True, input_names=input_names, output_names=output_names)
 
 

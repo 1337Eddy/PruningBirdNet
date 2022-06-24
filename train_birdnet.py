@@ -1,6 +1,7 @@
 import re
 import os
 from enum import Enum
+from matplotlib.pyplot import sca
 import torch
 import torch.optim as optim
 from torch import nn, tensor, threshold
@@ -10,9 +11,9 @@ from torch.autograd import Variable
 import numpy as np
 from torchsummary import summary
 from pathlib import Path
-from metrics import AverageMeter
-from metrics import accuracy
-import monitor
+from utils.metrics import AverageMeter
+from utils.metrics import accuracy
+import utils.monitor as monitor
 from utils import audio
 
 class Scaling_Factor_Mode(Enum):
@@ -210,6 +211,8 @@ class AnalyzeBirdnet():
                   '\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(i, train_loss=train_loss,train_top1=train_top1, val_loss=val_loss, val_top1=val_top1))
             
             if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE and i%5 != 1:
+                status = monitoring.update(val_loss.avg, lr=self.lr)
+            elif scaling_factor_mode == Scaling_Factor_Mode.TOGETHER:
                 status = monitoring.update(val_loss.avg, lr=self.lr)
             
             if (status == monitor.Status.LEARNING_RATE):

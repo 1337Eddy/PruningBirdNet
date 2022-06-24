@@ -107,6 +107,7 @@ class Resblock(nn.Module):
                 return x
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
+        #print(np.max(x.cpu().detach().numpy()))
         return x
 
 """
@@ -138,7 +139,11 @@ class ResStack(nn.Module):
         )
 
     def forward(self, x):
+        #print("Input Resstack")
+        #print(np.max(x.cpu().detach().numpy()))
         x = self.classifier(x)
+        #print(np.max(x.cpu().detach().numpy()))
+        #print()
         return x
 
 
