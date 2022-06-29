@@ -1,6 +1,7 @@
 import re
 import os
 from enum import Enum
+from black import out
 from matplotlib.pyplot import sca
 import torch
 import torch.optim as optim
@@ -71,7 +72,10 @@ class AnalyzeBirdnet():
                         sum += torch.sum(torch.abs(snd_layer))
                         counter += len(fst_layer)
                         counter += len(snd_layer)
-        sum.cuda()  
+        if sum != 0:
+            sum.cuda()
+        else: 
+            sum = torch.tensor([0]).cuda()  
         return sum, counter
 
     def prepare_data_and_labels(self, data, target):
@@ -92,8 +96,16 @@ class AnalyzeBirdnet():
         sum_scaling_factors, num_scaling_factors  = self.sum_scaling_parameters()
         sum_channel_factors, num_channel_factors = self.sum_conv_layer_scaling_factors()
 
-        loss_scaling_factors = self.gamma * sum_scaling_factors / num_scaling_factors
-        loss_channel_factors = (1-self.gamma) * sum_channel_factors / num_channel_factors
+
+        if num_scaling_factors != 0:
+            loss_scaling_factors = self.gamma * sum_scaling_factors / num_scaling_factors
+        else: 
+            loss_scaling_factors = torch.tensor([0]).cuda()
+        
+        if num_channel_factors != 0:
+            loss_channel_factors = (1-self.gamma) * sum_channel_factors / num_channel_factors
+        else: 
+            loss_channel_factors = torch.tensor([0]).cuda()
 
         loss = self.delta * (loss_scaling_factors + loss_channel_factors) + (1-self.delta) * loss 
 
@@ -115,6 +127,9 @@ class AnalyzeBirdnet():
             output = self.birdnet(data.float())
             output = np.squeeze(output)
             self.optimizer.zero_grad()
+
+            if output.dim() == 1:
+                continue
 
             loss = self.calc_loss(output, target)
             loss.backward()
@@ -145,7 +160,9 @@ class AnalyzeBirdnet():
             #Run model
             output = self.birdnet(data.float())
             output = np.squeeze(output)
-
+            
+            if output.dim() == 1:
+                continue
             loss = self.calc_loss(output, target)
 
             #Calculate and update metrics

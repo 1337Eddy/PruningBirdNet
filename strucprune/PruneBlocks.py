@@ -17,17 +17,19 @@ def prune_blocks(model_state_dict, filters, ratio):
             W = softmax(W)
             scaling_factors.append(W)
 
-    scaling_factors = sorted(scaling_factors, key=lambda x: x[1])
+    scaling_factors = sorted(scaling_factors, key=lambda x: x[1], reverse=True)
 
-    threshold = scaling_factors[int((len(scaling_factors)-1) * ratio)][1]
+    threshold = scaling_factors[round((len(scaling_factors)-1) * ratio)][0]
+    if int((len(scaling_factors)-1) * ratio) == len(scaling_factors) - 1:
+        threshold = 1.0
 
     #Iterate over filters to build names of saved layers and find layers to drop
     for i in range(1, len(filters) - 1):
         for j in range (1, len(filters[i])):
             name = f"module.classifier.{i}.classifier.{j}."
-
+            W = softmax(model_state_dict[name + "W"])
             #If the condition to the custom weights is True drop the whole layer
-            if (abs(model_state_dict[name + "W"][1]) < threshold):
+            if (W[0] < threshold):
                 layers = list(model_state_dict.keys())
                 remove_index.insert(0, (i,j)) 
                 for layer in layers:

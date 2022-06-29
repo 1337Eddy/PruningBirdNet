@@ -46,7 +46,7 @@ def get_mask_to_key(key):
 
     for i, name in zip(range(0, len(key_names)), key_names):
         if ds_block:
-            if key[resstack_index] == name[resstack_index]:
+            if key[resstack_index] <= name[resstack_index]:
                 index_key = key_names[i-1]
                 mask = module_mask_list[index_key][1]
                 return mask
@@ -64,7 +64,7 @@ def get_mask_to_key(key):
             else: 
                 continue
         elif resstack_appendix:
-            if int(key[resstack_index]) + 1 == int(name[resstack_index]):
+            if int(key[resstack_index]) + 1 <= int(name[resstack_index]):
                 index_key = key_names[i-1]
                 mask = module_mask_list[index_key][1]
                 return mask

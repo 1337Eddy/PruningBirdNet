@@ -1,10 +1,3 @@
-#from audioop import reverse
-#from pickletools import optimize
-#from tkinter import Variable
-#from tkinter.tix import Tree
-#from importlib_metadata import distribution
-#from sqlalchemy import over
-
 import os
 import time
 import numpy as np
@@ -128,40 +121,6 @@ def main():
         result = analyze.eval(args.eval_file)
         for sample in result:
             print(sample)
-    elif (mode == 'hpvt'):
-        hyperparameter = [  {'lr': 0.01, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'PADD'}, 
-                            {'lr': 0.005, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.001, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.0001, 'gamma': 0.2, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.001, 'gamma': 0.1, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.001, 'gamma': 0.3, 'epochs': 30, 'dim_handling': 'PADD'},
-                            {'lr': 0.001, 'gamma': 0.5, 'epochs': 30, 'dim_handling': 'PADD'},]
-        #Load Data
-        dataset = CallsDataset()
-        train_size = int(len(dataset) * 0.8)
-        test_size = len(dataset) - train_size
-        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-
-        for set in hyperparameter:
-
-            birdnet = model.BirdNet(skip_handling=set['dim_handling'])
-            birdnet = torch.nn.DataParallel(birdnet).cuda()
-            birdnet = birdnet.float()
-            criterion = nn.CrossEntropyLoss().cuda()
-            optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
-
-            #Start Training
-            save_path = args.save_path + f"lr_{set['lr']}_gamma_{set['gamma']}_dim_handling_{set['dim_handling']}/"
-            Path(save_path).mkdir(parents=True, exist_ok=True)
-            analyze = AnalyzeBirdnet(birdnet=birdnet, lr=set['lr'], criterion=criterion, train_loader=train_loader, 
-                                        test_loader=test_loader, save_path=save_path, gamma=set['gamma'])
-            start_time = time.time()
-            analyze.start_training(set['epochs'])
-            stop_time = time.time()
-            print(f"{stop_time - start_time} seconds \n")
-
 
 if __name__ == '__main__':
     main()
