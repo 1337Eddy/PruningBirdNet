@@ -107,15 +107,18 @@ class AnalyzeBirdnet():
         else: 
             loss_channel_factors = torch.tensor([0]).cuda()
 
-        loss = self.delta * (loss_scaling_factors + loss_channel_factors) + (1-self.delta) * loss 
+        result = self.delta * (loss_scaling_factors + loss_channel_factors) + (1-self.delta) * loss 
 
-        return loss
+        return result, self.delta * loss_scaling_factors, self.delta * loss_channel_factors, (1-self.delta) * loss 
     """
     Trains model for one epoch with given dataloader
     """
     def train(self, epoch):
         self.birdnet.train()
         losses = AverageMeter()
+        losses_block = AverageMeter()
+        losses_channel = AverageMeter()
+        losses_acc = AverageMeter()
         top1 = AverageMeter()
         for idx, (data, target) in enumerate(self.train_loader):
 
@@ -131,18 +134,23 @@ class AnalyzeBirdnet():
             if output.dim() == 1:
                 continue
 
-            loss = self.calc_loss(output, target)
+            loss, loss_block_part, loss_channel_part, loss_acc_part = self.calc_loss(output, target)
             loss.backward()
             self.optimizer.step()
             #Calculate and update metrics
             losses.update(loss.item(), data.size(0))
+            losses_block.update(loss_block_part.item(), data.size(0))
+            losses_channel.update(loss_channel_part.item(), data.size(0))
+            losses_acc.update(loss_acc_part.item(), data.size(0))
             prec = accuracy(output.data, target)
             top1.update(prec, data.size(0))
 
             # if(idx % 100 == 0):
             #     print('epoch: {:d}, iteration {:d}, Loss: {loss.val:.4f},\t' 
             #           'Loss avg: {loss.avg:.4f}, Accuracy: {top1.val:.4f}, Avg Accuracy: {top1.avg:.4f}'.format(epoch, idx, loss=losses, top1=top1))
-        return losses, top1
+        
+        loss_subdivision = [losses, losses_block, losses_channel, losses_acc]
+        return loss_subdivision, top1
 
 
     """
@@ -151,6 +159,9 @@ class AnalyzeBirdnet():
     def test(self):
         self.birdnet.eval()
         losses = AverageMeter()
+        losses_block = AverageMeter()
+        losses_channel = AverageMeter()
+        losses_acc = AverageMeter()
         top1 = AverageMeter()
         for data, target in self.test_loader:
             torch.cuda.empty_cache()
@@ -163,13 +174,19 @@ class AnalyzeBirdnet():
             
             if output.dim() == 1:
                 continue
-            loss = self.calc_loss(output, target)
+            loss, loss_block_part, loss_channel_part, loss_acc_part = self.calc_loss(output, target)
 
+            
             #Calculate and update metrics
             losses.update(loss.item(), data.size(0))
+            losses_block.update(loss_block_part.item(), data.size(0))
+            losses_channel.update(loss_channel_part.item(), data.size(0))
+            losses_acc.update(loss_acc_part.item(), data.size(0))
+
             prec = accuracy(output.data, target)
             top1.update(prec, data.size(0))
-        return losses, top1
+        loss_subdivision = [losses, losses_block, losses_channel, losses_acc]
+        return loss_subdivision, top1
 
 
     def save_model(self, epochs, birdnet, optimizer, val_loss, val_top1, 
@@ -203,34 +220,37 @@ class AnalyzeBirdnet():
         self.birdnet.train()
         monitoring = monitor.Monitor(self.loss_patience, self.early_stopping)
         version = 0
-        train_loss_list = []
-        test_loss_list = []
         train_acc_list = []
         test_acc_list = []
+        train_loss_subdivision_list = []
+        test_loss_subdivision_list = []
 
-        val_loss, val_top1 = self.test()
-        test_loss_list.append(val_loss.avg)
+        test_loss_subdivision, val_top1 = self.test()
+        test_loss_subdivision_list.append([test_loss_subdivision[0].avg, test_loss_subdivision[1].avg, test_loss_subdivision[2].avg, test_loss_subdivision[3].avg])
         test_acc_list.append(val_top1.avg) 
-        print('\n\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(val_loss=val_loss, val_top1=val_top1))
+        print('\n\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(val_loss=test_loss_subdivision[0], val_top1=val_top1))
         print("Start Training")
 
         for i in range(0, epochs):
             if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE:
                 self.freeze_scaling_factors(i%5==1)
-            train_loss, train_top1 = self.train(epoch=i)
-            val_loss, val_top1 = self.test()
-            train_loss_list.append(train_loss.avg)
-            test_loss_list.append(val_loss.avg)
+            train_loss_subdivision, train_top1 = self.train(epoch=i)
+            test_loss_subdivision, val_top1 = self.test()
+            train_loss_subdivision_list.append([train_loss_subdivision[0].avg, train_loss_subdivision[1].avg, train_loss_subdivision[2].avg, 
+                                                train_loss_subdivision[3].avg])
+            test_loss_subdivision_list.append([test_loss_subdivision[0].avg, test_loss_subdivision[1].avg, test_loss_subdivision[2].avg, 
+                                                test_loss_subdivision[3].avg])
             train_acc_list.append(train_top1.avg)
             test_acc_list.append(val_top1.avg) 
 
             print('epoch: {:d} \ntrain loss avg: {train_loss.avg:.4f}, accuracy avg: {train_top1.avg:.4f}\t'
-                  '\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(i, train_loss=train_loss,train_top1=train_top1, val_loss=val_loss, val_top1=val_top1))
+                  '\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(i, train_loss=train_loss_subdivision[0],
+                  train_top1=train_top1, val_loss=test_loss_subdivision[0], val_top1=val_top1))
             
             if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE and i%5 != 1:
-                status = monitoring.update(val_loss.avg, lr=self.lr)
+                status = monitoring.update(test_loss_subdivision[0].avg, lr=self.lr)
             elif scaling_factor_mode == Scaling_Factor_Mode.TOGETHER:
-                status = monitoring.update(val_loss.avg, lr=self.lr)
+                status = monitoring.update(test_loss_subdivision[0].avg, lr=self.lr)
             
             if (status == monitor.Status.LEARNING_RATE):
                 self.lr *= 0.5
@@ -239,13 +259,12 @@ class AnalyzeBirdnet():
 
             if (i % 5 == 0):
                 print("Save checkpoint: " + self.save_path + "birdnet_v" + str(version) + ".pt")
-                self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, 
-                    train_loss_list, test_loss_list, train_acc_list, test_acc_list, 
+                self.save_model(i, self.birdnet, self.optimizer, test_loss_subdivision[0], val_top1, 
+                    train_loss_subdivision_list, test_loss_subdivision_list, train_acc_list, test_acc_list, 
                     self.save_path + "birdnet_v" + str(version) + ".pt", filters=self.birdnet.module.filters)       
                 version += 1
-
-        self.save_model(i, self.birdnet, self.optimizer, val_loss, val_top1, 
-            train_loss_list, test_loss_list, train_acc_list, test_acc_list, 
+        self.save_model(i, self.birdnet, self.optimizer, test_loss_subdivision[0], val_top1, 
+            train_loss_subdivision_list, test_loss_subdivision_list, train_acc_list, test_acc_list, 
             self.save_path  + "birdnet_final.pt", filters=self.birdnet.module.filters)       
         print("Saved Model!")
     

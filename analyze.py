@@ -55,7 +55,7 @@ def main():
     parser.add_argument('--delta', default=0.5)
     parser.add_argument('--eval_file', default='/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/1calls/arcter/XC582288-326656.wav')
     parser.add_argument('--dim_handling', default='PADD')
-    parser.add_argument('--scaling_factors_mode', default='separated', help='Defines if the scaling factors of the resblocks are trained together or separated')
+    parser.add_argument('--scaling_factors_mode', default='together', help='Defines if the scaling factors of the resblocks are trained together or separated')
     parser.add_argument('--train_set', default="1dataset/1data/calls/")
     #Define Random seed for reproducibility
     torch.cuda.manual_seed(137)
