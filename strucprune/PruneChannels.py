@@ -1,13 +1,9 @@
 from collections import OrderedDict
-from threading import ThreadError
-from xxlimited import new
 import model
 import re
-
 import numpy as np
 import torch
 from torch import nn
-from prune import Channel_Pruning_Mode
 
 
 module_mask_list = {}
@@ -96,11 +92,6 @@ def fix_dim_problems(new_state_dict, state_dict):
     return new_state_dict
 
 
-def isZero(values):
-    for item in values:
-        if item != 0:
-            return False 
-    return True
 
 def create_mask(weight1, weight2, channel_ratio, mode):
     """
@@ -147,26 +138,15 @@ def create_mask(weight1, weight2, channel_ratio, mode):
     ordered_weights1 = list(filter(lambda x: x[2] == 1, ordered_weights))
     ordered_weights2 = list(filter(lambda x: x[2] == 2, ordered_weights))
 
-    if isZero([item[0] for item in ordered_weights1]):
-        index = np.argmax(weight1)
-        ordered_weights1[index][0] = weight1[index]
-    
-    if isZero([item[0] for item in ordered_weights2]):
-        index = np.argmax(weight2)
-        ordered_weights2[index][0] = weight2[index]
-
     mask1 = []
     for value, _, _ in ordered_weights1:
-        if value != 0:
-            mask1.append(True)
-        else:
-            mask1.append(False)
+        isNotZero = value != 0
+        mask1.append(isNotZero)
+
     mask2 = []
     for value, _, _ in ordered_weights2:
-        if value != 0:
-            mask2.append(True)
-        else:
-            mask2.append(False)
+        isNotZero = value != 0
+        mask2.append(isNotZero)
     
     return torch.tensor(mask1), torch.tensor(mask2)
 
@@ -193,11 +173,14 @@ def apply_mask_to_conv_bn_block(mask, conv_bn_pair):
     return conv_bn_pair, new_size 
 
 
-def create_new_channel(conv_bn_pair, channel_ratio, mode, module_name):
+def create_new_resblock(conv_bn_pair, channel_ratio, mode, module_name):
     bn_weight1 = conv_bn_pair[2]
     bn_weight2 = conv_bn_pair[9]
 
     mask1, mask2 = create_mask(bn_weight1[1], bn_weight2[1], channel_ratio, mode)
+    print(module_name)
+    print(mask1)
+    print(mask2)
     mask1 = mask1.cuda()
     mask2 = mask2.cuda()
 
@@ -211,16 +194,16 @@ def create_new_channel(conv_bn_pair, channel_ratio, mode, module_name):
 
 def update_filter_size(filters, new_size, filter_counter):
     counter = 0
-    for i in range (1, len(filters)- 1):
-        for j in range(1, len(filters[i])):
-            for k in range(0, len(filters[i][j])):
+    for stack in range (1, len(filters)- 1):
+        for block in range(1, len(filters[stack])):
+            for conv_layer in range(0, len(filters[stack][block])):
                 if counter == filter_counter:
-                    filters[i][j][k] = new_size
+                    filters[stack][block][conv_layer] = new_size
                     break
                 counter += 1
     return filters
 
-def prune_channels(model_state_dict, ratio, filters, mode, channel_ratio):
+def prune_channels(model_state_dict, filters, mode, channel_ratio):
     conv_bn_pair = []
     filter_counter = 0
     for key, value in model_state_dict.items():
@@ -235,9 +218,9 @@ def prune_channels(model_state_dict, ratio, filters, mode, channel_ratio):
             block_ratio = 1 - softmax(value)[0]
         
         if number_list:
-            conv_bn_pair.append((key, value))
+            conv_bn_pair.append((key, value))   #Collect convolutional and batchnorm layer of a Residual Block
             if len(conv_bn_pair) == 14:
-                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_channel(conv_bn_pair, channel_ratio, mode, number_list[0][:-13])
+                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio, mode, number_list[0][:-13])
 
                 for name, value in conv_bn_pair1:
                     model_state_dict[name] = value
@@ -254,7 +237,7 @@ def prune_channels(model_state_dict, ratio, filters, mode, channel_ratio):
 
 def prune(model_state_dict, ratio, filters, mode, channel_ratio):
     #print("prune channels")
-    model_state_dict, filters = prune_channels(model_state_dict, ratio, filters, mode, channel_ratio)
+    model_state_dict, filters = prune_channels(model_state_dict, filters, mode, channel_ratio)
     #Build new pruned model
     birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()

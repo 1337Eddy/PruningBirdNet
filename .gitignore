@@ -6,3 +6,4 @@ onnx/
 .vscode/
 .ipynb_checkpoints/
 images/
+wandb/

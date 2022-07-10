@@ -87,11 +87,11 @@ def check_parameters(channel_ratio, block_ratio):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--load_path', default='/media/eddy/datasets/models/birdnet_g5_d5_tog/block/pruned_c00_b80_MIN/birdnet_final.pt', help='Load model from file')
+    parser.add_argument('--load_path', default='/media/eddy/datasets/models/test/birdnet_final.pt', help='Load model from file')
     parser.add_argument('--save_path', default='test/', help='Load model from file')
     parser.add_argument('--finetune', default='True')
     parser.add_argument('--epochs', default=10, help='Specify number of epochs for training')
-    parser.add_argument('--channel_ratio', default=0.4)
+    parser.add_argument('--channel_ratio', default=0.15)
     parser.add_argument('--block_ratio', default=0.0)
     parser.add_argument('--mode', default="MIN")
     parser.add_argument('--train_set', default="1dataset/1data/calls/")
