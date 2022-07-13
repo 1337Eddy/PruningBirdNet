@@ -178,9 +178,6 @@ def create_new_resblock(conv_bn_pair, channel_ratio, mode, module_name):
     bn_weight2 = conv_bn_pair[9]
 
     mask1, mask2 = create_mask(bn_weight1[1], bn_weight2[1], channel_ratio, mode)
-    print(module_name)
-    print(mask1)
-    print(mask2)
     mask1 = mask1.cuda()
     mask2 = mask2.cuda()
 
@@ -239,10 +236,12 @@ def prune(model_state_dict, ratio, filters, mode, channel_ratio):
     #print("prune channels")
     model_state_dict, filters = prune_channels(model_state_dict, filters, mode, channel_ratio)
     #Build new pruned model
-    birdnet = model.BirdNet(filters=filters)
+    masks = []
+    for key in list(module_mask_list):
+        masks.append(module_mask_list[key][1])
+    birdnet = model.BirdNet(filters=filters, padding_masks=masks)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
 
     model_state_dict = fix_dim_problems(model_state_dict, birdnet.state_dict())
-
-    return model_state_dict, filters
+    return model_state_dict, filters, masks

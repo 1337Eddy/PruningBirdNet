@@ -16,7 +16,7 @@ KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
 
 
 class BirdNet(nn.Module):
-    def __init__(self, filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD):
+    def __init__(self, filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD, padding_masks = []):
         super(BirdNet, self).__init__()
 
         global channel_handling
@@ -24,21 +24,37 @@ class BirdNet(nn.Module):
         channel_handling = skip_handling
         block_handling = handling_block
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
+        self.padding_masks = padding_masks
+        
+        if self.padding_masks == []:
+            create_mask = True 
+        else: 
+            create_mask = False
+        mask_counter = 0
+
         for i in range(1, len(filters) - 1):
             in_channels = filters[i-1][-1][-1]
-            self.layers += [ResStack(num_filters=filters[i], in_channels=in_channels, kernel_size=KERNEL_SIZES[i-1])]
+            num_masks_per_stack = len(filters[i]) - 1
+
+            if create_mask:
+                for filter in filters[i][1:]:
+                    mask = torch.from_numpy(np.full(filter[1], True)).cuda()
+                    self.padding_masks.append(mask)
+
+            self.layers += [ResStack(num_filters=filters[i], in_channels=in_channels, 
+                            kernel_size=KERNEL_SIZES[i-1], masks=self.padding_masks[mask_counter:mask_counter+num_masks_per_stack])]
+            mask_counter += num_masks_per_stack
+
         self.layers += [nn.BatchNorm2d(filters[-2][-1][-1])]
         self.layers += [nn.ReLU(True)]
         self.layers += [ClassificationPath(in_channels=filters[-2][-1][-1], num_filters=filters[-1], kernel_size=(4,10))]
         self.layers += [nn.AdaptiveAvgPool2d(output_size=(1,1))]
         self.classifier = nn.Sequential(*self.layers)
         self.filters = filters
+
     
     def forward(self, x):
         return self.classifier(x)
-    
-    def initialize_weights(self):
-        log('Loading parameters...')
     
 
 """
@@ -67,17 +83,19 @@ Args:
     num_blocks: 
 """
 class ResStack(nn.Module):
-    def __init__(self, num_filters, in_channels, kernel_size):
+    def __init__(self, num_filters, in_channels, kernel_size, masks):
         super(ResStack, self).__init__()
         #Num output filters of DownsamlingResBlock
         self.num_filters = num_filters
         in_channels_resblock = num_filters[0][-1]
         
         resblock_list = []
+        mask_counter = 0
         for i in range (1, len(num_filters)):
-            resblock_list += [Resblock(num_filters=num_filters[i], in_channels=in_channels_resblock, kernel_size=kernel_size)]
+            resblock_list += [Resblock(num_filters=num_filters[i], in_channels=in_channels_resblock, kernel_size=kernel_size, mask=masks[mask_counter])]
             #in_channels_resblock = max(num_filters[i][-1], num_filters[i-1][-1])
             in_channels_resblock = num_filters[i][-1]
+            mask_counter += 1
         resblock_list += [nn.BatchNorm2d(num_features=num_filters[-1][-1])]
         resblock_list += [nn.ReLU(True)]
 
@@ -87,16 +105,12 @@ class ResStack(nn.Module):
         )
 
     def forward(self, x):
-        print("Input Resstack")
-        print(np.max(x.cpu().detach().numpy()))
+        #print("Input Resstack")
+        #print(np.mean(x.cpu().detach().numpy()))
         x = self.classifier(x)
-        print("output Resstack")
-        print(np.max(x.cpu().detach().numpy()))
-        i = 0
-        for module in self.classifier.modules():
-            if i == 38:
-                print(module)
-            i+=1
+        #print("output Resstack")
+        #print(np.mean(x.cpu().detach().numpy()))
+        #print()
         return x
 
 
@@ -108,10 +122,11 @@ Args:
     kernel_size: (three) dimensional size of both conv layers in residual block 
 """
 class Resblock(nn.Module):
-    def __init__(self, num_filters, in_channels, kernel_size):
+    def __init__(self, num_filters, in_channels, kernel_size, mask):
         super(Resblock, self).__init__()
         self.num_filters = num_filters
         self.in_channels = in_channels
+        self.mask = mask
         self.layer_list = [ nn.BatchNorm2d(num_features=in_channels),
                             nn.ReLU(True),
                             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, 
@@ -129,9 +144,20 @@ class Resblock(nn.Module):
         self.softmax = nn.Softmax(dim=0)
 
 
+    def apply_mask_to_tensor(self, new_size, tensor):  
+        buffer = torch.zeros([np.shape(tensor)[0], new_size, np.shape(tensor)[2], np.shape(tensor)[3]]).cuda()
+        mask = self.mask
+        for j in range(0, np.shape(buffer)[0]):
+            i = 0
+            for bool, net in zip(self.mask, tensor[j]):
+                if bool:
+                    buffer[j][i] = net 
+                    i += 1
+        return buffer
+
     def forward(self, x):
-        print("Input Resblock")
-        print(np.max(x.cpu().detach().numpy()))
+        #print("Input Resblock")
+        #print(np.mean(x.cpu().detach().numpy()))
         scaling_factors = self.softmax(self.W)
         skip = x 
         skip = torch.mul(skip, scaling_factors[1])
@@ -141,22 +167,13 @@ class Resblock(nn.Module):
         num_channels_skip = skip.size(dim=1)
         num_channels_x = x.size(dim=1) 
 
-        diff = abs(num_channels_x - num_channels_skip)
-        even = True if diff % 2 == 0 else False
-
-        pad_up = int(diff / 2)
-        pad_down = int(diff / 2) if even else int(diff / 2) + 1
-
-        if (num_channels_skip < num_channels_x):
-            skip = F.pad(input=skip, pad=(0,0,0,0, pad_up, pad_down), mode='constant', value=0)
-        else:
-            skip = skip[:,:num_channels_x,:,:] 
+        skip = self.apply_mask_to_tensor(num_channels_x, skip)
         assert np.shape(x) == np.shape(skip)                    
 
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
-        print("Output Resblock")
-        print(np.max(x.cpu().detach().numpy()))
+        #print("Output Resblock")
+        #print(np.mean(x.cpu().detach().numpy()))
         return x
 
 
@@ -189,16 +206,16 @@ class DownsamplingResBlock(nn.Module):
         self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):
-        print("Input DS Block")
-        print(np.max(x.cpu().detach().numpy()))
+        #print("Input DS Block")
+        #print(np.mean(x.cpu().detach().numpy()))
         scaling_factors = self.softmax(self.W)
         skip = self.skipPath(x)
         skip = torch.mul(skip, scaling_factors[1])
         x = self.classifierPath(x)
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
-        print("Output DS Block")
-        print(np.max(x.cpu().detach().numpy()))
+        #print("Output DS Block")
+        #print(np.mean(x.cpu().detach().numpy()))
         return x
 
 
@@ -220,6 +237,5 @@ class ClassificationPath(nn.Module):
 
     def forward(self, x):
         x = self.classifierPath(x)
-        exit()
         return x
    
