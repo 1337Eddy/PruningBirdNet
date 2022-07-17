@@ -145,15 +145,15 @@ class Resblock(nn.Module):
 
 
     def apply_mask_to_tensor(self, new_size, tensor):  
-        buffer = torch.zeros([np.shape(tensor)[0], new_size, np.shape(tensor)[2], np.shape(tensor)[3]]).cuda()
-        mask = self.mask
+        tensor.cpu()
+        buffer = torch.zeros([np.shape(tensor)[0], new_size, np.shape(tensor)[2], np.shape(tensor)[3]])
         for j in range(0, np.shape(buffer)[0]):
             i = 0
             for bool, net in zip(self.mask, tensor[j]):
                 if bool:
                     buffer[j][i] = net 
-                    i += 1
-        return buffer
+                    i += 1 
+        return buffer.cuda()
 
     def forward(self, x):
         #print("Input Resblock")
@@ -164,10 +164,19 @@ class Resblock(nn.Module):
 
         x = self.classifier(x)
 
-        num_channels_skip = skip.size(dim=1)
         num_channels_x = x.size(dim=1) 
 
-        skip = self.apply_mask_to_tensor(num_channels_x, skip)
+        #skip = self.apply_mask_to_tensor(num_channels_x, skip)
+        num_channels_skip = skip.size(dim=1)
+        num_channels_x = x.size(dim=1) 
+        diff = abs(num_channels_x - num_channels_skip)
+        even = True if diff % 2 == 0 else False
+        pad_up = int(diff / 2)
+        pad_down = int(diff / 2) if even else int(diff / 2) + 1
+        if (num_channels_skip < num_channels_x):
+            skip = F.pad(input=skip, pad=(0,0,0,0, pad_up + pad_down, 0), mode='constant', value=0)
+        else:
+            skip = skip[:,:num_channels_x,:,:] 
         assert np.shape(x) == np.shape(skip)                    
 
         x = torch.mul(x, scaling_factors[0])

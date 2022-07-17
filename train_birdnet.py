@@ -228,6 +228,7 @@ class AnalyzeBirdnet():
         #     "delta": self.delta 
         # }
         # wandb.watch(self.birdnet)
+        self.summary()
         self.birdnet.train()
         monitoring = monitor.Monitor(self.loss_patience, self.early_stopping)
         version = 0

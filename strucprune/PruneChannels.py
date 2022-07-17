@@ -1,9 +1,10 @@
 from collections import OrderedDict
+from math import tanh
 import model
 import re
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, tensor
 
 
 module_mask_list = {}
@@ -129,7 +130,7 @@ def create_mask(weight1, weight2, channel_ratio, mode):
         ordered_weights = ow1 + ow2
     elif mode.value == 2: #MIN
         ordered_weights = sorted(ordered_weights, key = lambda x: abs(x[0]))   
-        for i in range(0, int(len(ordered_weights) * channel_ratio)):
+        for i in range(0, int(len(ordered_weights) * channel_ratio) - 1):
             ordered_weights[i][0] = 0
     else: 
         raise RuntimeError(f'mode {mode} doesnt exist')
@@ -147,8 +148,16 @@ def create_mask(weight1, weight2, channel_ratio, mode):
     for value, _, _ in ordered_weights2:
         isNotZero = value != 0
         mask2.append(isNotZero)
+
+    mask1, mask2 = torch.tensor(mask1), torch.tensor(mask2)
+
+    #Prevent that all values of mask are False. This is important because otherwise the layer has no channels
+    if torch.all(~mask1):
+        mask1[np.argmax(weight1)] = True 
+    if torch.all(~mask2):
+        mask2[np.argmax(weight2)] = True 
     
-    return torch.tensor(mask1), torch.tensor(mask2)
+    return mask1, mask2
 
 def apply_mask_to_conv_bn_block(mask, conv_bn_pair):
     conv_weight, conv_bias = conv_bn_pair[0], conv_bn_pair[1]
@@ -200,14 +209,27 @@ def update_filter_size(filters, new_size, filter_counter):
                 counter += 1
     return filters
 
-def prune_channels(model_state_dict, filters, mode, channel_ratio):
+def calc_mean_of_block_ratios(model_state_dict, pattern_scaling_factor, softmax):
+    block_ratios = np.array([])
+    for key, value in model_state_dict.items():
+        scaling_factor = re.search(pattern_scaling_factor, key)
+        if scaling_factor:
+            value = 1 - softmax(value)[0]
+            value = np.array(value.cpu())
+            block_ratios = np.append(block_ratios, value)
+    mean = np.mean(block_ratios)
+
+    return torch.tensor([mean]).cuda()
+
+def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentum):
     conv_bn_pair = []
     filter_counter = 0
+    pattern_scaling_factor = "module\.classifier\.[0-9]+\.classifier\.[1-9]+\.W"
+    pattern_modules = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[2-9]"
+    softmax = nn.Softmax(dim=0)
+    block_ratio_mean = calc_mean_of_block_ratios(model_state_dict, pattern_scaling_factor, softmax)
+    
     for key, value in model_state_dict.items():
-        pattern_scaling_factor = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.W"
-        pattern_modules = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[2-9]"
-        softmax = nn.Softmax(dim=0)
-
         scaling_factor = re.search(pattern_scaling_factor, key)
         number_list = re.search(pattern_modules, key)
 
@@ -217,7 +239,11 @@ def prune_channels(model_state_dict, filters, mode, channel_ratio):
         if number_list:
             conv_bn_pair.append((key, value))   #Collect convolutional and batchnorm layer of a Residual Block
             if len(conv_bn_pair) == 14:
-                (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio, mode, number_list[0][:-13])
+                if block_momentum:
+                    channel_ratio_with_block_momentum = tanh(channel_ratio * (block_ratio_mean+block_ratio))
+                    (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio_with_block_momentum, mode, number_list[0][:-13])
+                else: 
+                    (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio, mode, number_list[0][:-13])
 
                 for name, value in conv_bn_pair1:
                     model_state_dict[name] = value
@@ -232,13 +258,15 @@ def prune_channels(model_state_dict, filters, mode, channel_ratio):
     return model_state_dict, filters
 
 
-def prune(model_state_dict, ratio, filters, mode, channel_ratio):
+def prune(model_state_dict, ratio, filters, mode, channel_ratio, block_momentum=True):
     #print("prune channels")
-    model_state_dict, filters = prune_channels(model_state_dict, filters, mode, channel_ratio)
+    model_state_dict, filters = prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentum)
     #Build new pruned model
     masks = []
     for key in list(module_mask_list):
         masks.append(module_mask_list[key][1])
+
+
     birdnet = model.BirdNet(filters=filters, padding_masks=masks)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
