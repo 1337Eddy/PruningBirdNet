@@ -5,6 +5,7 @@ import re
 import numpy as np
 import torch
 from torch import nn, tensor
+import torch.nn.functional as F
 
 
 module_mask_list = {}
@@ -214,12 +215,24 @@ def calc_mean_of_block_ratios(model_state_dict, pattern_scaling_factor, softmax)
     for key, value in model_state_dict.items():
         scaling_factor = re.search(pattern_scaling_factor, key)
         if scaling_factor:
-            value = 1 - softmax(value)[0]
+            value = softmax(value)[0]
             value = np.array(value.cpu())
             block_ratios = np.append(block_ratios, value)
     mean = np.mean(block_ratios)
 
     return torch.tensor([mean]).cuda()
+
+def get_block_ratios(model_state_dict, pattern_scaling_factor):
+    block_ratios = torch.tensor([]).cuda()
+    softmax = nn.Softmax(dim=0)
+    for key, value in model_state_dict.items():
+        scaling_factor = re.search(pattern_scaling_factor, key)
+        if scaling_factor:
+            print(softmax(value))
+            value = softmax(value)[0]
+            value = value.unsqueeze(dim=0)
+            block_ratios = torch.cat((block_ratios, value), 0)
+    return block_ratios
 
 def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentum):
     conv_bn_pair = []
@@ -228,7 +241,12 @@ def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentu
     pattern_modules = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[2-9]"
     softmax = nn.Softmax(dim=0)
     block_ratio_mean = calc_mean_of_block_ratios(model_state_dict, pattern_scaling_factor, softmax)
-    
+    # block_ratios = get_block_ratios(model_state_dict=model_state_dict, pattern_scaling_factor=pattern_scaling_factor)
+    # block_ratios *= len(block_ratios)
+    # print(block_ratios)
+    # print(softmax(block_ratios)*len(block_ratios))
+    # exit()
+
     for key, value in model_state_dict.items():
         scaling_factor = re.search(pattern_scaling_factor, key)
         number_list = re.search(pattern_modules, key)
@@ -240,8 +258,8 @@ def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentu
             conv_bn_pair.append((key, value))   #Collect convolutional and batchnorm layer of a Residual Block
             if len(conv_bn_pair) == 14:
                 if block_momentum:
-                    channel_ratio_with_block_momentum = tanh(channel_ratio * (block_ratio_mean+block_ratio))
-                    (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio_with_block_momentum, mode, number_list[0][:-13])
+                    channel_ratio_with_block_temperature = tanh(channel_ratio * (block_ratio_mean+block_ratio))
+                    (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio_with_block_temperature, mode, number_list[0][:-13])
                 else: 
                     (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio, mode, number_list[0][:-13])
 

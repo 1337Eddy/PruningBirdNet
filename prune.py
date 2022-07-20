@@ -21,31 +21,17 @@ class Channel_Pruning_Mode(Enum):
 
 def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
     data = DataLabels(dataset_path + "train/",)
-
-    train_dataset = CallsDataset(dataset_path + "train/")
-    test_dataset = CallsDataset(dataset_path + "test/")
-    train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
-
-    #Start Training
-    analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                test_loader=test_loader, save_path=save_path, gamma=0.5, delta=0.5)
+    analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path,
+                            num_workers=16, batch_size=16, save_path=save_path, gamma=0.5, delta=0.5)
     analyze.start_training(epochs, scaling_factor_mode=scaling_factor_mode)
 
     return birdnet
 
 def test(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/"):
     data = DataLabels(dataset_path + "train/",)
-
-    train_dataset = CallsDataset(dataset_path + "train/")
-    test_dataset = CallsDataset(dataset_path + "test/")
-    train_loader = DataLoader(train_dataset, batch_size=16, num_workers=16, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=16, num_workers=16, shuffle=True)
-
-    #Start Training
-    analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                test_loader=test_loader, save_path=save_path, gamma=0.2)
-    loss, top1 = analyze.test()
+    analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path,
+                        num_workers=16, batch_size=16, save_path=save_path, gamma=0.2)
+    loss, top1 = analyze.test(mode="val")
 
     return loss, top1
 

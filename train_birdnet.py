@@ -6,6 +6,7 @@ from matplotlib.pyplot import sca
 import torch
 import torch.optim as optim
 from torch import nn, tensor, threshold
+from data.data import CallsDataset
 import model 
 from torch.autograd import Variable
 
@@ -16,7 +17,7 @@ from utils.metrics import AverageMeter
 from utils.metrics import accuracy
 import utils.monitor as monitor
 from utils import audio
-
+from torch.utils.data import DataLoader
 import wandb
 
 class Scaling_Factor_Mode(Enum):
@@ -30,17 +31,24 @@ threshold = 0.5
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    train_loader=None, test_loader=None, save_path=None, loss_patience=1, early_stopping=2, gamma=0.5, delta=0.5):
+                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=1, early_stopping=2, gamma=0.5, delta=0.5):
 
         torch.cuda.manual_seed(1337)
         torch.manual_seed(73)
+
+        train_dataset = CallsDataset(dataset_path + "train/")
+        test_dataset = CallsDataset(dataset_path + "test/")
+        val_dataset = CallsDataset(dataset_path + "val/")
+
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+        self.val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+
         self.dataset = dataset
         self.gamma=gamma
         self.loss_patience = loss_patience
         self.early_stopping = early_stopping
-        self.save_path = save_path
-        self.train_loader = train_loader
-        self.test_loader = test_loader
+        self.save_path = os.path.join(save_path)
         self.criterion = criterion
         self.lr = lr
         self.criterion = nn.CrossEntropyLoss().cuda()
@@ -158,14 +166,15 @@ class AnalyzeBirdnet():
     """
     Tests model over data from dataloader
     """
-    def test(self):
+    def test(self, mode="val"):
         self.birdnet.eval()
         losses = AverageMeter()
         losses_block = AverageMeter()
         losses_channel = AverageMeter()
         losses_acc = AverageMeter()
         top1 = AverageMeter()
-        for data, target in self.test_loader:
+        data_loader = self.test_loader if mode == "test" else self.val_loader
+        for data, target in data_loader:
             torch.cuda.empty_cache()
 
             data, target = self.prepare_data_and_labels(data, target)
@@ -177,7 +186,6 @@ class AnalyzeBirdnet():
             if output.dim() == 1:
                 continue
             loss, loss_block_part, loss_channel_part, loss_acc_part = self.calc_loss(output, target)
-
             
             #Calculate and update metrics
             losses.update(loss.item(), data.size(0))
@@ -193,6 +201,7 @@ class AnalyzeBirdnet():
 
     def save_model(self, epochs, birdnet, optimizer, val_loss, val_top1, 
                 train_loss_list, test_loss_list, train_acc_list, test_acc_list, path, filters):
+        path = os.path.join(path)
         Path(path[:-len(path.split('/')[-1])]).mkdir(parents=True, exist_ok=True)
         torch.save({
                 'train_loss_list': train_loss_list,
@@ -237,7 +246,7 @@ class AnalyzeBirdnet():
         train_loss_subdivision_list = []
         test_loss_subdivision_list = []
 
-        test_loss_subdivision, val_top1 = self.test()
+        test_loss_subdivision, val_top1 = self.test(mode="val")
         test_loss_subdivision_list.append([test_loss_subdivision[0].avg, test_loss_subdivision[1].avg, test_loss_subdivision[2].avg, test_loss_subdivision[3].avg])
         test_acc_list.append(val_top1.avg) 
         # wandb.log({"loss": test_loss_subdivision[0].avg, "accuracy": val_top1.avg})

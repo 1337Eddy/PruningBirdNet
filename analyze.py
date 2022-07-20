@@ -25,10 +25,10 @@ class DataLabels():
         self.birds = sorted(self.birds)
         self.num_classes = len(self.birds)
         self.filters = [[[32]], 
-        [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
-        [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
-        [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
+        [[16, 16, 32], [64, 64], [64, 64], [64, 64]], 
+        [[32, 32, 64], [128, 128], [128, 128], [128, 128]], 
+        [[64, 64, 128], [256, 256], [256, 256], [256, 256]], 
+        [[128, 128, 256], [512, 512], [512, 512], [512, 512]],
         [512, 512, self.num_classes]]
 
         self.bird_dict = {x: self.birds.index(x) for x in self.birds}
@@ -57,7 +57,7 @@ def main():
     parser.add_argument('--eval_file', default='/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/1data/calls/train/arcter/')
     parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--scaling_factors_mode', default='together', help='Defines if the scaling factors of the resblocks are trained together or separated')
-    parser.add_argument('--train_set', default="1dataset/1data/calls/")
+    parser.add_argument('--dataset_path', default="1dataset/1data/calls/")
     #Define Random seed for reproducibility
     torch.cuda.manual_seed(137)
     torch.manual_seed(735)
@@ -70,18 +70,7 @@ def main():
     lr=float(args.lr)
     gamma=float(args.gamma)
     delta=float(args.delta)
-    dim_handling = args.dim_handling
-    dataset_path = args.train_set
-
-    if (dim_handling == "PADD"):
-        dim_handling = model.Skip_Handling.PADD
-    elif (dim_handling == "SKIP"):
-        dim_handling = model.Skip_Handling.SKIP
-    elif (dim_handling == "CUT"):
-        dim_handling = model.Skip_Handling.CUT
-    else:
-        print(f"Error: {dim_handling} is no valid argument")
-        exit()
+    dataset_path = args.dataset_path
 
     Path(args.save_path).mkdir(parents=True, exist_ok=True)
 
@@ -90,7 +79,7 @@ def main():
 
     if (args.load_path != ''):
         checkpoint = torch.load(args.load_path)
-        birdnet = model.BirdNet(filters=checkpoint['filters'], skip_handling=dim_handling, padding_masks=checkpoint['padding_masks'])
+        birdnet = model.BirdNet(filters=checkpoint['filters'], padding_masks=checkpoint['padding_masks'])
         birdnet = torch.nn.DataParallel(birdnet).cuda()
         birdnet = birdnet.float()
         criterion = nn.CrossEntropyLoss().cuda()
@@ -98,21 +87,15 @@ def main():
         birdnet.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     else: 
-        birdnet = model.BirdNet(filters=data.filters, skip_handling=dim_handling)
+        birdnet = model.BirdNet(filters=data.filters)
         birdnet = torch.nn.DataParallel(birdnet).cuda()
         birdnet = birdnet.float()
         criterion = nn.CrossEntropyLoss().cuda()
         optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
     
     if (mode == 'train'):
-        train_dataset = CallsDataset(dataset_path + "train/")
-        test_dataset = CallsDataset(dataset_path + "test/")
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-
-        #Start Training
-        analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                    test_loader=test_loader, save_path=args.save_path, gamma=gamma, delta=delta)
+        analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
+                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta)
         scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
 
         analyze.start_training(int(args.epochs), scaling_factor_mode)
@@ -122,17 +105,15 @@ def main():
         for sample in result:
             print(sample)
     elif (mode == 'test'):
-        train_dataset = CallsDataset(dataset_path + "train/")
-        test_dataset = CallsDataset(dataset_path + "test/")
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-
         #Start Training
-        analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, train_loader=train_loader, 
-                                    test_loader=test_loader, save_path=args.save_path, gamma=gamma, delta=delta)
-        loss_subdivision, top1 = analyze.test()
-        print(f"accuracy: {top1.avg}%")
-        print(f"loss: {loss_subdivision[0].avg}")
+        analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
+                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta)
+        loss_subdivision, top1 = analyze.test(mode="val")
+        print(f"accuracy val: {top1.avg}%")
+        print(f"loss val: {loss_subdivision[0].avg}")
+        loss_subdivision, top1 = analyze.test(mode="test")
+        print(f"accuracy test: {top1.avg}%")
+        print(f"loss test: {loss_subdivision[0].avg}")
 
 if __name__ == '__main__':
     main()
