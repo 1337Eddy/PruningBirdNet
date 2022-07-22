@@ -6,6 +6,11 @@ import numpy as np
 import torch
 from torch import nn, tensor
 import torch.nn.functional as F
+from strucprune.MaskSelection import SelectMask
+from strucprune.MaskSelectionCURL import SelectMaskCURL
+from strucprune.MaskSelectionEVENLY import SelectMaskEvenly
+from strucprune.MaskSelectionMIN import SelectMaskMin
+from strucprune.MaskSelectionNOPADD import SelectMaskNoPadd 
 
 
 module_mask_list = {}
@@ -234,7 +239,7 @@ def get_block_ratios(model_state_dict, pattern_scaling_factor):
             block_ratios = torch.cat((block_ratios, value), 0)
     return block_ratios
 
-def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentum):
+def prune_channels(model_state_dict, filters, mode, channel_ratio, block_temperature):
     conv_bn_pair = []
     filter_counter = 0
     pattern_scaling_factor = "module\.classifier\.[0-9]+\.classifier\.[1-9]+\.W"
@@ -257,7 +262,7 @@ def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentu
         if number_list:
             conv_bn_pair.append((key, value))   #Collect convolutional and batchnorm layer of a Residual Block
             if len(conv_bn_pair) == 14:
-                if block_momentum:
+                if block_temperature:
                     channel_ratio_with_block_temperature = tanh(channel_ratio * (block_ratio_mean+block_ratio))
                     (conv_bn_pair1, new_size1), (conv_bn_pair2, new_size2) = create_new_resblock(conv_bn_pair, channel_ratio_with_block_temperature, mode, number_list[0][:-13])
                 else: 
@@ -275,9 +280,82 @@ def prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentu
                 filter_counter += 2
     return model_state_dict, filters
 
+def apply_mask_to_layer(tensor, mask):
+    if tensor.dim() == 1:
+        return torch.masked_select(tensor, mask.cuda())
+    else: 
+        new_size = np.shape(tensor)[0]
+        i = 0
+        buffer = torch.zeros([new_size, np.shape(tensor)[1], np.shape(tensor)[2], np.shape(tensor)[3]])
+        for bool, net in zip(mask, tensor[1]):
+            if bool:
+                buffer[i] = net 
+                i += 1
+        return buffer
+
+
+def apply_masks(model_state_dict, masks):
+    fst = ['2.weight', '2.bias', '3.weight', '3.bias', '3.running_mean', '3.running_var']
+    snd = ['6.weight', '6.bias', '7.weight', '7.bias', '7.running_mean', '7.running_var']
+
+    for key, mask in masks.items():
+        layer_suffix_name_list = fst if key[44] == '3' else snd
+        for layer in layer_suffix_name_list:
+            layer_name = key[:44] + layer
+            model_state_dict[layer_name] = apply_mask_to_layer(model_state_dict[layer_name], mask)
+            
+    return model_state_dict
+
+
+def update_filter(filters, keys_grouped_in_stacks, model_state_dict):
+    buffer = []
+    new_filters = []
+    for stack in keys_grouped_in_stacks:
+        filters_per_stack = []
+        for key in stack:
+            print(key)
+            layer_size = len(model_state_dict[key])
+            if len(buffer) < 2:
+                buffer.append(layer_size)
+            else: 
+                filters_per_stack.append(buffer)
+                buffer = [layer_size]
+        filters_per_stack.append(buffer)
+        buffer = []
+        new_filters.append(filters_per_stack)
+
+        filters_per_stack = []
+
+    for i in range(0, len(new_filters)):
+        filters[i+1][1:] = new_filters[i]
+    print(filters)
+
+def new_prune_channels(model_state_dict, mode= "MIN", channel_ratio=0.4, filters=None, block_temperature=None):
+    select_mask = SelectMask()
+    if mode == "MIN":
+        select_mask = SelectMaskMin()
+    elif mode == "EVENLY":
+        select_mask = SelectMaskEvenly()
+    elif mode == "NO_PADD":
+        select_mask = SelectMaskNoPadd()
+    elif mode == "CURL":
+        select_mask = SelectMaskCURL()
+    masks = select_mask.get_masks(model_state_dict, channel_ratio, None)
+    model_state_dict = apply_masks(model_state_dict, masks)
+    
+
+    keys_grouped_in_stacks = select_mask.group_key_name_list_in_stacks(list(masks.keys()))
+    filters = update_filter(filters, keys_grouped_in_stacks, model_state_dict)
+    return model_state_dict, filters
+        
+
+    
 
 def prune(model_state_dict, ratio, filters, mode, channel_ratio, block_momentum=True):
     #print("prune channels")
+    #PruneCURL.prune(model_state_dict, filters, channel_ratio)
+    #model_state_dict, filters = new_prune_channels(model_state_dict, filters=filters)
+    #exit()
     model_state_dict, filters = prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentum)
     #Build new pruned model
     masks = []

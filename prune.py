@@ -18,6 +18,7 @@ class Channel_Pruning_Mode(Enum):
     EVENLY = 0
     NO_PADD = 1
     MIN = 2
+    CURL = 3
 
 def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
     data = DataLabels(dataset_path + "train/",)
