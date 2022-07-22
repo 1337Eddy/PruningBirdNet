@@ -55,9 +55,9 @@ def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel
     #Load parameter to model
     birdnet.load_state_dict(model_state_dict)
 
-    model_state_dict, filters, masks = PruneChannels.prune(model_state_dict, ratio, filters, mode, channel_ratio)
+    model_state_dict, filters = PruneChannels.prune(model_state_dict, ratio, filters, mode, channel_ratio)
 
-    birdnet = model.BirdNet(filters=filters, padding_masks=masks)
+    birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     #Load parameter to model
 

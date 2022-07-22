@@ -16,7 +16,7 @@ KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
 
 
 class BirdNet(nn.Module):
-    def __init__(self, filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD, padding_masks = []):
+    def __init__(self, filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD):
         super(BirdNet, self).__init__()
 
         global channel_handling
@@ -24,26 +24,12 @@ class BirdNet(nn.Module):
         channel_handling = skip_handling
         block_handling = handling_block
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
-        self.padding_masks = padding_masks
-        
-        if self.padding_masks == []:
-            create_mask = True 
-        else: 
-            create_mask = False
-        mask_counter = 0
 
         for i in range(1, len(filters) - 1):
             in_channels = filters[i-1][-1][-1]
-            num_masks_per_stack = len(filters[i]) - 1
-
-            if create_mask:
-                for filter in filters[i][1:]:
-                    mask = torch.from_numpy(np.full(filter[1], True)).cuda()
-                    self.padding_masks.append(mask)
 
             self.layers += [ResStack(num_filters=filters[i], in_channels=in_channels, 
-                            kernel_size=KERNEL_SIZES[i-1], masks=self.padding_masks[mask_counter:mask_counter+num_masks_per_stack])]
-            mask_counter += num_masks_per_stack
+                            kernel_size=KERNEL_SIZES[i-1])]
 
         self.layers += [nn.BatchNorm2d(filters[-2][-1][-1])]
         self.layers += [nn.ReLU(True)]
@@ -83,7 +69,7 @@ Args:
     num_blocks: 
 """
 class ResStack(nn.Module):
-    def __init__(self, num_filters, in_channels, kernel_size, masks):
+    def __init__(self, num_filters, in_channels, kernel_size):
         super(ResStack, self).__init__()
         #Num output filters of DownsamlingResBlock
         self.num_filters = num_filters
@@ -92,7 +78,7 @@ class ResStack(nn.Module):
         resblock_list = []
         mask_counter = 0
         for i in range (1, len(num_filters)):
-            resblock_list += [Resblock(num_filters=num_filters[i], in_channels=in_channels_resblock, kernel_size=kernel_size, mask=masks[mask_counter])]
+            resblock_list += [Resblock(num_filters=num_filters[i], in_channels=in_channels_resblock, kernel_size=kernel_size)]
             #in_channels_resblock = max(num_filters[i][-1], num_filters[i-1][-1])
             in_channels_resblock = num_filters[i][-1]
             mask_counter += 1
@@ -122,11 +108,10 @@ Args:
     kernel_size: (three) dimensional size of both conv layers in residual block 
 """
 class Resblock(nn.Module):
-    def __init__(self, num_filters, in_channels, kernel_size, mask):
+    def __init__(self, num_filters, in_channels, kernel_size):
         super(Resblock, self).__init__()
         self.num_filters = num_filters
         self.in_channels = in_channels
-        self.mask = mask
         self.layer_list = [ nn.BatchNorm2d(num_features=in_channels),
                             nn.ReLU(True),
                             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, 
@@ -144,16 +129,6 @@ class Resblock(nn.Module):
         self.softmax = nn.Softmax(dim=0)
 
 
-    def apply_mask_to_tensor(self, new_size, tensor):  
-        tensor.cpu()
-        buffer = torch.zeros([np.shape(tensor)[0], new_size, np.shape(tensor)[2], np.shape(tensor)[3]])
-        for j in range(0, np.shape(buffer)[0]):
-            i = 0
-            for bool, net in zip(self.mask, tensor[j]):
-                if bool:
-                    buffer[j][i] = net 
-                    i += 1 
-        return buffer.cuda()
 
     def forward(self, x):
         #print("Input Resblock")

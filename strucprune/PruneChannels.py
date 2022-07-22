@@ -357,15 +357,12 @@ def prune(model_state_dict, ratio, filters, mode, channel_ratio, block_momentum=
     #model_state_dict, filters = new_prune_channels(model_state_dict, filters=filters)
     #exit()
     model_state_dict, filters = prune_channels(model_state_dict, filters, mode, channel_ratio, block_momentum)
-    #Build new pruned model
-    masks = []
-    for key in list(module_mask_list):
-        masks.append(module_mask_list[key][1])
 
 
-    birdnet = model.BirdNet(filters=filters, padding_masks=masks)
+
+    birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
 
     model_state_dict = fix_dim_problems(model_state_dict, birdnet.state_dict())
-    return model_state_dict, filters, masks
+    return model_state_dict, filters

@@ -212,7 +212,6 @@ class AnalyzeBirdnet():
                 'epoch': epochs,
                 'model_state_dict': birdnet.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'padding_masks': birdnet.module.padding_masks,
                 'loss': val_loss,
                 'accuracy': val_top1
                 }, path)
