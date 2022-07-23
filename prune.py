@@ -121,8 +121,10 @@ def parse_arguments():
         mode = Channel_Pruning_Mode.MIN
     elif mode == "EVENLY":
         mode = Channel_Pruning_Mode.EVENLY
+    elif mode == "CURL":
+        mode = Channel_Pruning_Mode.CURL
     else: 
-        raise RuntimeError('{mode} is no valid argument. Input NO_PADD, MIN or EVENLY')
+        raise RuntimeError('{mode} is no valid argument. Input NO_PADD, MIN, CURL or EVENLY')
     
     return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode
 

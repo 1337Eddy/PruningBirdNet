@@ -8,9 +8,9 @@ class SelectMaskCURL(SelectMask):
 
     def create_mask(self, tensor, ratio):
         layer_size = len(tensor)
-        indices = torch.topk(tensor, int(ratio * layer_size))[1]
-        mask = torch.ones(layer_size, dtype=torch.bool)
-        mask[indices] = False
+        indices = torch.topk(tensor, int((1-ratio) * layer_size))[1]
+        mask = torch.zeros(layer_size, dtype=torch.bool)
+        mask[indices] = True
         return mask 
 
     def sum_layers_in_stack(self, stacks, model_state_dict):

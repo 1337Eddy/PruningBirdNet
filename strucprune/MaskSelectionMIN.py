@@ -9,9 +9,9 @@ class SelectMaskMin(SelectMask):
     def create_mask(self, tensor1, tensor2, ratio):
         tensor = torch.cat((tensor1, tensor2))
         layer_size = len(tensor)
-        indices = torch.topk(tensor, int(ratio * layer_size))[1]
-        mask = torch.ones(layer_size, dtype=torch.bool)
-        mask[indices] = False
+        indices = torch.topk(tensor, int((1-ratio) * layer_size))[1]
+        mask = torch.zeros(layer_size, dtype=torch.bool)
+        mask[indices] = True
 
         mask1, mask2 = torch.split(mask, len(tensor1))
 

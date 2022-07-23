@@ -79,7 +79,7 @@ def main():
 
     if (args.load_path != ''):
         checkpoint = torch.load(args.load_path)
-        birdnet = model.BirdNet(filters=checkpoint['filters'], padding_masks=checkpoint['padding_masks'])
+        birdnet = model.BirdNet(filters=checkpoint['filters'])
         birdnet = torch.nn.DataParallel(birdnet).cuda()
         birdnet = birdnet.float()
         criterion = nn.CrossEntropyLoss().cuda()
@@ -108,12 +108,13 @@ def main():
         #Start Training
         analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
                     batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta)
+        analyze.summary()
         loss_subdivision, top1 = analyze.test(mode="val")
-        print(f"accuracy val: {top1.avg}%")
-        print(f"loss val: {loss_subdivision[0].avg}")
+        print(f"accuracy val: {(top1.avg*100):.2f}%")
+        print(f"loss val: {loss_subdivision[0].avg:.6f}")
         loss_subdivision, top1 = analyze.test(mode="test")
-        print(f"accuracy test: {top1.avg}%")
-        print(f"loss test: {loss_subdivision[0].avg}")
+        print(f"accuracy test: {(top1.avg*100):.2f}%")
+        print(f"loss test: {loss_subdivision[0].avg:.6f}")
 
 if __name__ == '__main__':
     main()

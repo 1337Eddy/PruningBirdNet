@@ -28,6 +28,14 @@ class SelectMask():
         stacks.append(temp)
         return stacks 
 
+    def sort_dict_by_key(self, dict):
+        buffer = {}
+        keys = dict.keys()
+        keys = sorted(keys)
+        for key in keys:
+            buffer[key] = dict[key] 
+        return buffer
+
     def select_layers(self, model_state_dict, pattern):
         sub_dict = {}
         for key, value in model_state_dict.items():
