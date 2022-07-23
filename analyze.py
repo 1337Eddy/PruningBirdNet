@@ -72,6 +72,12 @@ def main():
     delta=float(args.delta)
     dataset_path = args.dataset_path
 
+    dim_handling = args.dim_handling
+    if dim_handling == "PADD":
+        dim_handling = model.Dim_Handling.PADD
+    elif dim_handling == "SKIP":
+        dim_handling = model.Dim_Handling.SKIP
+
     Path(args.save_path).mkdir(parents=True, exist_ok=True)
 
 
@@ -79,7 +85,7 @@ def main():
 
     if (args.load_path != ''):
         checkpoint = torch.load(args.load_path)
-        birdnet = model.BirdNet(filters=checkpoint['filters'])
+        birdnet = model.BirdNet(filters=checkpoint['filters'], dimension_handling=dim_handling)
         birdnet = torch.nn.DataParallel(birdnet).cuda()
         birdnet = birdnet.float()
         criterion = nn.CrossEntropyLoss().cuda()
@@ -87,7 +93,7 @@ def main():
         birdnet.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     else: 
-        birdnet = model.BirdNet(filters=data.filters)
+        birdnet = model.BirdNet(filters=data.filters, dimension_handling=dim_handling)
         birdnet = torch.nn.DataParallel(birdnet).cuda()
         birdnet = birdnet.float()
         criterion = nn.CrossEntropyLoss().cuda()

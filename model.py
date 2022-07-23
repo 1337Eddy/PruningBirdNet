@@ -6,7 +6,7 @@ from enum import Enum
 import torch.nn.functional as F
 
 
-class Skip_Handling(Enum):
+class Dim_Handling(Enum):
     PADD = 0
     CUT = 1
     SKIP = 2
@@ -16,12 +16,12 @@ KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
 
 
 class BirdNet(nn.Module):
-    def __init__(self, filters, skip_handling=Skip_Handling.PADD, handling_block=Skip_Handling.PADD):
+    def __init__(self, filters, dimension_handling=Dim_Handling.PADD, handling_block=Dim_Handling.PADD):
         super(BirdNet, self).__init__()
 
-        global channel_handling
+        global dim_handling
         global block_handling 
-        channel_handling = skip_handling
+        dim_handling = dimension_handling
         block_handling = handling_block
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
 
@@ -131,33 +131,28 @@ class Resblock(nn.Module):
 
 
     def forward(self, x):
-        #print("Input Resblock")
-        #print(np.mean(x.cpu().detach().numpy()))
         scaling_factors = self.softmax(self.W)
         skip = x 
         skip = torch.mul(skip, scaling_factors[1])
-
         x = self.classifier(x)
+        if dim_handling == Dim_Handling.PADD or np.shape(x) == np.shape(skip):   
+            num_channels_x = x.size(dim=1) 
+            num_channels_skip = skip.size(dim=1)
+            num_channels_x = x.size(dim=1) 
+            diff = abs(num_channels_x - num_channels_skip)
+            even = True if diff % 2 == 0 else False
+            pad_up = int(diff / 2)
+            pad_down = int(diff / 2) if even else int(diff / 2) + 1
+            if (num_channels_skip < num_channels_x):
+                skip = F.pad(input=skip, pad=(0,0,0,0, pad_up + pad_down, 0), mode='constant', value=0)
+            else:
+                skip = skip[:,:num_channels_x,:,:] 
+            assert np.shape(x) == np.shape(skip)                    
 
-        num_channels_x = x.size(dim=1) 
-
-        #skip = self.apply_mask_to_tensor(num_channels_x, skip)
-        num_channels_skip = skip.size(dim=1)
-        num_channels_x = x.size(dim=1) 
-        diff = abs(num_channels_x - num_channels_skip)
-        even = True if diff % 2 == 0 else False
-        pad_up = int(diff / 2)
-        pad_down = int(diff / 2) if even else int(diff / 2) + 1
-        if (num_channels_skip < num_channels_x):
-            skip = F.pad(input=skip, pad=(0,0,0,0, pad_up + pad_down, 0), mode='constant', value=0)
-        else:
-            skip = skip[:,:num_channels_x,:,:] 
-        assert np.shape(x) == np.shape(skip)                    
-
-        x = torch.mul(x, scaling_factors[0])
-        x = torch.add(x, skip)
-        #print("Output Resblock")
-        #print(np.mean(x.cpu().detach().numpy()))
+            x = torch.mul(x, scaling_factors[0])
+            x = torch.add(x, skip)
+        elif dim_handling == Dim_Handling.SKIP:
+            pass
         return x
 
 

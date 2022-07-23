@@ -36,12 +36,12 @@ def test(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1data
 
     return loss, top1
 
-def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5):
+def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5, dim_handling=model.Dim_Handling.PADD):
     checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
 
     filters = checkpoint['filters']
-    birdnet = model.BirdNet(filters=filters)
+    birdnet = model.BirdNet(filters=filters, dimension_handling=dim_handling)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
     optimizer = optim.Adam(birdnet.parameters(), lr=lr) 
@@ -50,14 +50,14 @@ def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel
 
 
     model_state_dict, filters = PruneBlocks.prune(model_state_dict, filters, ratio)
-    birdnet = model.BirdNet(filters=filters)
+    birdnet = model.BirdNet(filters=filters, dimension_handling=dim_handling)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     #Load parameter to model
     birdnet.load_state_dict(model_state_dict)
 
     model_state_dict, filters = PruneChannels.prune(model_state_dict, ratio, filters, mode, channel_ratio)
 
-    birdnet = model.BirdNet(filters=filters)
+    birdnet = model.BirdNet(filters=filters, dimension_handling=dim_handling)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     #Load parameter to model
 
@@ -83,6 +83,7 @@ def parse_arguments():
     parser.add_argument('--mode', default="MIN")
     parser.add_argument('--train_set', default="1dataset/1data/calls/")
     parser.add_argument('--scaling_factors_mode', default='together')
+    parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--simultaneous', default="True")
 
 
@@ -97,6 +98,13 @@ def parse_arguments():
     scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
 
     check_ratios(channel_ratio, block_ratio)
+
+
+    dim_handling = args.dim_handling
+    if dim_handling == "PADD":
+        dim_handling = model.Dim_Handling.PADD
+    elif dim_handling == "SKIP":
+        dim_handling = model.Dim_Handling.SKIP
 
     finetune = args.finetune
     if finetune == "True":
@@ -126,10 +134,10 @@ def parse_arguments():
     else: 
         raise RuntimeError('{mode} is no valid argument. Input NO_PADD, MIN, CURL or EVENLY')
     
-    return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode
+    return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling
 
 if __name__ == '__main__':
-    channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode = parse_arguments()
+    channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling = parse_arguments()
     
     folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(100*block_ratio)}_{mode._name_}/"
     save_path += folder_name        
@@ -139,13 +147,13 @@ if __name__ == '__main__':
 
 
     if simultaneous or (block_ratio == 0.0 or channel_ratio == 0.0):
-        birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=channel_ratio)
+        birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=channel_ratio, dim_handling=dim_handling)
         if finetune:
             retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode)
     else: 
-        birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=0.0)
+        birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=0.0, dim_handling=dim_handling)
         retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode)
-        birdnet = prune(save_path + "birdnet_final.pt", ratio=0.0, mode=mode, channel_ratio=channel_ratio)
+        birdnet = prune(save_path + "birdnet_final.pt", ratio=0.0, mode=mode, channel_ratio=channel_ratio, dim_handling=dim_handling)
         retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode)
 
 
