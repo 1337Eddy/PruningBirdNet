@@ -10,11 +10,11 @@ sys.path.insert(1, '/media/eddy/bachelor-arbeit/PruningBirdNet/')
 import model 
 
 def export_onnx(path, save_path):
-    skip_handling = model.Skip_Handling.PADD
+    skip_handling = model.Dim_Handling.PADD
     checkpoint = torch.load(path)
     filters = checkpoint['filters']
 
-    birdnet = model.BirdNet(filters=filters, skip_handling=skip_handling)
+    birdnet = model.BirdNet(filters=filters, dimension_handling=skip_handling)
     #birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
     criterion = nn.CrossEntropyLoss().cuda()
