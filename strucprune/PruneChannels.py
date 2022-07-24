@@ -37,22 +37,42 @@ def rename_parameter_keys(new_state_dict, state_dict):
 
 def get_mask_to_key(key):
     key_names = list(module_mask_list)
-    pattern_ds_block = "module\.classifier\.[0-9]+\.classifier\.[0-9]\.(classifierPath|skipPath)"
+    pattern_ds_block_classifier_path = "module\.classifier\.[0-9]+\.classifier\.[0-9]\.classifierPath"
+    pattern_ds_block_skip_path = "module\.classifier\.[0-9]+\.classifier\.[0-9]\.skipPath"
     pattern_resblock = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[0-9]+\."
-    pattern_resstack_appendix = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\."
+    pattern_resstack_appendix = "module\.classifier\.[0-9]+\.classifier\.[1-9]+\."
     resstack_index = 18
     resblock_index = 31
     resblock_layer_index = 44
+    classifierPath_index = 48
+    skipPath_index = 42
+    ds_last_bn__layer_index = 44
 
-    ds_block = re.search(pattern_ds_block, key)
+    ds_block_classifier_path = re.search(pattern_ds_block_classifier_path, key)
+    ds_block_skip_path = re.search(pattern_ds_block_skip_path, key)
     resblock = re.search(pattern_resblock, key)
     resstack_appendix = re.search(pattern_resstack_appendix, key)
 
     for i, name in zip(range(0, len(key_names)), key_names):
-        if ds_block:
-            if key[resstack_index] <= name[resstack_index]:
-                index_key = key_names[i-1]
-                mask = module_mask_list[index_key][1]
+        if ds_block_classifier_path:
+            if key[resstack_index] == name[resstack_index] and key[resblock_index] == name[resblock_index]:
+                ds_cp_number = int(key[classifierPath_index])
+                if ds_cp_number < 2:
+                    index_key = key_names[i-1]
+                    mask = module_mask_list[index_key][1] 
+                elif ds_cp_number < 4:
+                    mask = module_mask_list[name][0]
+                else: 
+                    mask = module_mask_list[name][1]
+                return mask
+            else: 
+                continue
+        elif ds_block_skip_path:
+            if key[resstack_index] == name[resstack_index] and key[resblock_index] == name[resblock_index]:
+                ds_sp_number = int(key[skipPath_index])
+                if ds_sp_number < 2:
+                    index_key = key_names[i-1]
+                    mask = module_mask_list[index_key][1] 
                 return mask
             else: 
                 continue
@@ -61,7 +81,10 @@ def get_mask_to_key(key):
                 resblock_layer_number = int(key[resblock_layer_index])
                 if resblock_layer_number < 4:
                     index_key = key_names[i-1]
-                    mask = module_mask_list[index_key][1]
+                    if index_key[-1] == '0':
+                        mask = module_mask_list[index_key][2] 
+                    else: 
+                        mask = module_mask_list[index_key][1]
                 else: 
                     mask = module_mask_list[name][0]
                 return mask
@@ -80,7 +103,7 @@ def get_mask_to_key(key):
     return mask 
 
 def fix_dim_problems(new_state_dict, state_dict):
-    prefix = "module.classifier.1.classifier.2"
+    
     for key, value in new_state_dict.items():
         shape = np.shape(state_dict[key])
         if value.dim() > 1:   
@@ -96,7 +119,6 @@ def fix_dim_problems(new_state_dict, state_dict):
             else:
                 mask = get_mask_to_key(key)
                 new_state_dict[key] = torch.masked_select(value, mask.cuda())
-
 
         assert np.shape(new_state_dict[key]) == shape
     return new_state_dict
@@ -116,31 +138,59 @@ def apply_mask_to_layer(tensor, mask):
         return buffer
 
 
-def apply_masks(model_state_dict, masks):
-    fst = ['2.weight', '2.bias', '3.weight', '3.bias', '3.running_mean', '3.running_var']
-    snd = ['6.weight', '6.bias', '7.weight', '7.bias', '7.running_mean', '7.running_var']
+def select_suffix_list(key):
+    fst_bn_layer = ['2.weight', '2.bias', '3.weight', '3.bias', '3.running_mean', '3.running_var']
+    snd_bn_layer = ['6.weight', '6.bias', '7.weight', '7.bias', '7.running_mean', '7.running_var']
+    fst_ds_layer = ['0.weight', '0.bias', '1.weight', '1.bias', '1.running_mean', '1.running_var']
+    snd_ds_layer = ['3.weight', '3.bias', '4.weight', '4.bias', '4.running_mean', '4.running_var']
+    last_ds_layer = ['classifierPath.8.weight', 'classifierPath.8.bias', 'skipPath.1.weight', 'skipPath.1.bias', 'batchnorm.0.weight', 'batchnorm.0.bias', 'batchnorm.0.running_mean', 'batchnorm.0.running_var']
+    
+    if key[44] == '3':
+        return fst_bn_layer, 44
+    elif key[44] == '7':
+        return snd_bn_layer, 44
+    elif key[43] == '0':
+        return last_ds_layer, 33
+    elif key[48] == '1':
+        return fst_ds_layer, 48 
+    elif key[48] == '4':
+        return snd_ds_layer, 48 
 
+def apply_masks(model_state_dict, masks):
+    
     for key, mask in masks.items():
-        layer_suffix_name_list = fst if key[44] == '3' else snd
+         
+        layer_suffix_name_list, index = select_suffix_list(key)
+
         for layer in layer_suffix_name_list:
-            layer_name = key[:44] + layer
-            model_state_dict[layer_name] = apply_mask_to_layer(model_state_dict[layer_name], mask)
-            
+            layer_name = key[:index] + layer
+            model_state_dict[layer_name] = apply_mask_to_layer(model_state_dict[layer_name], mask) 
     return model_state_dict
 
 
 def update_filter(filters, keys_grouped_in_stacks, model_state_dict):
     buffer = []
     new_filters = []
+
     for stack in keys_grouped_in_stacks:
         filters_per_stack = []
-        for key in stack:
-            layer_size = len(model_state_dict[key])
-            if len(buffer) < 2:
-                buffer.append(layer_size)
+        is_ds_block_appended = False
+        for struc in stack:
+            if is_ds_block_appended:
+                layer_size = len(model_state_dict[struc])
+                if len(buffer) < 2:
+                    buffer.append(layer_size)
+                else: 
+                    filters_per_stack.append(buffer)
+                    buffer = [layer_size]
             else: 
-                filters_per_stack.append(buffer)
-                buffer = [layer_size]
+                layer_size = len(model_state_dict[struc])
+                if len(buffer) < 3:
+                    buffer.append(layer_size)
+                else: 
+                    filters_per_stack.append(buffer)
+                    buffer = [layer_size]
+                    is_ds_block_appended = True
         filters_per_stack.append(buffer)
         buffer = []
         new_filters.append(filters_per_stack)
@@ -148,18 +198,17 @@ def update_filter(filters, keys_grouped_in_stacks, model_state_dict):
         filters_per_stack = []
 
     for i in range(0, len(new_filters)):
-        filters[i+1][1:] = new_filters[i]
+        filters[i+1] = new_filters[i]
     return filters
 
 def create_module_mask_list(masks):
-    buffer = None
     last_key = None
     for key, item in masks.items():
         name = key[:32]
         if name == last_key:
-            module_mask_list[name] = (buffer, item)
+            module_mask_list[name] += [item]
         else: 
-            buffer = item 
+            module_mask_list[name] = [item]
             last_key = name
 
 def prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, block_temperature=None):
@@ -178,8 +227,11 @@ def prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, bloc
 
     create_module_mask_list(masks)
 
+
     keys_grouped_in_stacks = select_mask.group_key_name_list_in_stacks(list(masks.keys()))
+
     filters = update_filter(filters, keys_grouped_in_stacks, model_state_dict)
+
     return model_state_dict, filters
         
 

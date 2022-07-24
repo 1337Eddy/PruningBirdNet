@@ -26,10 +26,13 @@ class SelectMaskCURL(SelectMask):
                 summation_dict[block] = sum 
         return summation_dict
     
-    def get_masks(self, model_state_dict, ratio, block_temperature):
+    def get_masks(self, model_state_dict, ratio, block_temperature, part="ALL"):
         masks = {}
         
-        fst_layers = self.select_layers(model_state_dict, self.fst_bn_layer_in_resblock_pattern) 
+        if part == "ALL":
+            fst_layers = self.select_layers(model_state_dict, [self.fst_bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
+        else: 
+            fst_layers = self.select_layers(model_state_dict, self.fst_bn_layer_in_resblock_pattern) 
         snd_layers = self.select_layers(model_state_dict, self.snd_bn_layer_in_resblock_pattern) 
 
         stacks = self.group_key_name_list_in_stacks(list(snd_layers.keys()))
@@ -38,6 +41,19 @@ class SelectMaskCURL(SelectMask):
 
         layers_temp = {**fst_layers, **sum_of_snd_bn_layer_per_resstack}
         keys = sorted(layers_temp)
+
+        skip_counter = 0
+        for i in range(0, len(keys)):  
+            if skip_counter > 0:
+                skip_counter -= 1
+                continue    
+            if "batchnorm" in keys[i]:
+                tmp = keys[i]
+                keys[i] = keys[i+1]
+                keys[i+1] = keys[i+2]
+                keys[i+2] = tmp 
+                skip_counter = 2
+
         layers = {}
         for key in keys:
             layers[key] = layers_temp[key]

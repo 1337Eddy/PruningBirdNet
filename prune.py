@@ -74,13 +74,13 @@ def check_ratios(channel_ratio, block_ratio):
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--load_path', default='/media/eddy/datasets/models/new_padding_strategy/birdnet_g5_d5_tog/birdnet_v3.pt', help='Load model from file')
+    parser.add_argument('--load_path', default='/media/eddy/datasets/models/prune_ds/birdnet_final.pt', help='Load model from file')
     parser.add_argument('--save_path', default='test/', help='Load model from file')
     parser.add_argument('--finetune', default='True')
     parser.add_argument('--epochs', default=10, help='Specify number of epochs for training')
-    parser.add_argument('--channel_ratio', default=0.0)
-    parser.add_argument('--block_ratio', default=0.0)
-    parser.add_argument('--mode', default="MIN")
+    parser.add_argument('--channel_ratio', default=0.3)
+    parser.add_argument('--block_ratio', default=0.2)
+    parser.add_argument('--mode', default="CURL")
     parser.add_argument('--train_set', default="1dataset/1data/calls/")
     parser.add_argument('--scaling_factors_mode', default='together')
     parser.add_argument('--dim_handling', default='PADD')

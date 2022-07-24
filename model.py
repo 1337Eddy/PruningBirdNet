@@ -176,6 +176,10 @@ class DownsamplingResBlock(nn.Module):
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[2], kernel_size=(1,1))
         )
         self.W = torch.nn.Parameter(torch.randn(2))
+
+        self.batchnorm = nn.Sequential(
+            nn.BatchNorm2d(num_features=num_filters[2]),
+        )
         self.W.requires_grad = True
         self.softmax = nn.Softmax(dim=0)
 
@@ -186,6 +190,7 @@ class DownsamplingResBlock(nn.Module):
         x = self.classifierPath(x)
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
+        x = self.batchnorm(x)
         return x
 
 

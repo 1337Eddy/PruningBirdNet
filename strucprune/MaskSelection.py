@@ -9,6 +9,9 @@ class SelectMask():
         self.fst_bn_layer_in_resblock_pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[3].weight"
         self.snd_bn_layer_in_resblock_pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[7].weight"
         self.bn_layer_in_resblock_pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]+\.classifier\.[3|7].weight"
+        self.bn_layer_in_dsblock_pattern = "module\.classifier\.[1-9].classifier\.0\.classifierPath\.[1|4]\.weight"
+        self.last_bn_layer_of_dsblock_pattern = "module\.classifier\.[1-9]\.classifier\.0\.batchnorm\.0\.weight"
+        self.bn_layer_in_resstack_pattern = f"[{self.last_bn_layer_of_dsblock_pattern}|{self.bn_layer_in_dsblock_pattern}|{self.bn_layer_in_resblock_pattern}]" #
         self.scaling_block_pattern = "module\.classifier\.[0-9]+\.classifier\.[1-9]+\.W"
         self.len_resstack = len("module.classifier.1")
         self.len_resblock = len("module.classifier.1.classifier.2")
@@ -39,9 +42,15 @@ class SelectMask():
     def select_layers(self, model_state_dict, pattern):
         sub_dict = {}
         for key, value in model_state_dict.items():
-            element = re.search(pattern, key)
-            if element:
-                sub_dict[key] = value 
+            if isinstance(pattern, list):
+                for elem in pattern:
+                    element = re.search(elem, key)
+                    if element:
+                        sub_dict[key] = value 
+            elif isinstance(pattern, str):
+                element = re.search(pattern, key)
+                if element:
+                    sub_dict[key] = value 
         return sub_dict
 
     @classmethod

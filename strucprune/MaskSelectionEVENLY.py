@@ -12,10 +12,13 @@ class SelectMaskEvenly(SelectMask):
         mask[indices] = True
         return mask 
 
-    def get_masks(self, model_state_dict, ratio, block_temperature):
+    def get_masks(self, model_state_dict, ratio, block_temperature, part="ALL"):
         masks = {}
         
-        layers = self.select_layers(model_state_dict, self.bn_layer_in_resblock_pattern) 
+        if part == "ALL":
+            layers = self.select_layers(model_state_dict, [self.bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
+        else: 
+            layers = self.select_layers(model_state_dict, self.bn_layer_in_resblock_pattern) 
 
         for key in list(layers): 
             mask = self.create_mask(layers[key], ratio)
