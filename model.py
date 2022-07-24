@@ -91,12 +91,7 @@ class ResStack(nn.Module):
         )
 
     def forward(self, x):
-        #print("Input Resstack")
-        #print(np.mean(x.cpu().detach().numpy()))
         x = self.classifier(x)
-        #print("output Resstack")
-        #print(np.mean(x.cpu().detach().numpy()))
-        #print()
         return x
 
 
@@ -185,16 +180,12 @@ class DownsamplingResBlock(nn.Module):
         self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):
-        #print("Input DS Block")
-        #print(np.mean(x.cpu().detach().numpy()))
         scaling_factors = self.softmax(self.W)
         skip = self.skipPath(x)
         skip = torch.mul(skip, scaling_factors[1])
         x = self.classifierPath(x)
         x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
-        #print("Output DS Block")
-        #print(np.mean(x.cpu().detach().numpy()))
         return x
 
 

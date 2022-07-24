@@ -162,7 +162,7 @@ def create_module_mask_list(masks):
             buffer = item 
             last_key = name
 
-def new_prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, block_temperature=None):
+def prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, block_temperature=None):
     select_mask = SelectMask()
     if mode.value == 2:
         select_mask = SelectMaskMin()
@@ -172,7 +172,7 @@ def new_prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, 
         select_mask = SelectMaskNoPadd()
     elif mode.value == 3:
         select_mask = SelectMaskCURL()
-    masks = select_mask.get_masks(model_state_dict, channel_ratio, None)
+    masks = select_mask.get_masks(model_state_dict, channel_ratio, block_temperature)
 
     model_state_dict = apply_masks(model_state_dict, masks)
 
@@ -185,7 +185,7 @@ def new_prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, 
 
 
 def prune(model_state_dict, ratio, filters, mode, channel_ratio, block_momentum=True):
-    model_state_dict, filters = new_prune_channels(copy.copy(model_state_dict), mode=mode, filters=copy.copy(filters), channel_ratio=channel_ratio)
+    model_state_dict, filters = prune_channels(copy.copy(model_state_dict), mode=mode, filters=copy.copy(filters), channel_ratio=channel_ratio)
 
     birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()

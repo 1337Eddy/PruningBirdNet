@@ -228,14 +228,6 @@ class AnalyzeBirdnet():
     Train loop that trains the model for some epochs and handels learning rate reduction and checkpoint save
     """
     def start_training(self, epochs, scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
-        # wandb.init(project="birdnet")
-        # wandb.config = {
-        #     "learning_rate": self.lr, 
-        #     "epochs": epochs, 
-        #     "gamma": self.gamma, 
-        #     "delta": self.delta 
-        # }
-        # wandb.watch(self.birdnet)
         self.summary()
         self.birdnet.train()
         monitoring = monitor.Monitor(self.loss_patience, self.early_stopping)
@@ -248,7 +240,6 @@ class AnalyzeBirdnet():
         test_loss_subdivision, val_top1 = self.test(mode="val")
         test_loss_subdivision_list.append([test_loss_subdivision[0].avg, test_loss_subdivision[1].avg, test_loss_subdivision[2].avg, test_loss_subdivision[3].avg])
         test_acc_list.append(val_top1.avg) 
-        # wandb.log({"loss": test_loss_subdivision[0].avg, "accuracy": val_top1.avg})
         print('\n\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(val_loss=test_loss_subdivision[0], val_top1=val_top1))
         
         
@@ -272,7 +263,6 @@ class AnalyzeBirdnet():
             train_acc_list.append(train_top1.avg)
             test_acc_list.append(val_top1.avg) 
 
-            # wandb.log({"loss": test_loss_subdivision[0].avg, "accuracy": val_top1.avg})
 
             print('epoch: {:d} \ntrain loss avg: {train_loss.avg:.4f}, accuracy avg: {train_top1.avg:.4f}\t'
                   '\ntest loss avg: {val_loss.avg:.4f}, accuracy avg: {val_top1.avg:.4f}'.format(i, train_loss=train_loss_subdivision[0],
