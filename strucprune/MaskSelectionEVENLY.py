@@ -21,7 +21,8 @@ class SelectMaskEvenly(SelectMask):
             layers = self.select_layers(model_state_dict, self.bn_layer_in_resblock_pattern) 
 
         for key in list(layers): 
+            #ratio = self.get_temperature_ratio(key, ratio, block_temperature)
+            #print(ratio)
             mask = self.create_mask(layers[key], ratio)
             masks[key] = mask.cuda()
-
         return masks
