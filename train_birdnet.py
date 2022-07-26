@@ -46,7 +46,7 @@ class AnalyzeBirdnet():
 
         self.dataset = dataset
         self.gamma=gamma
-        self.loss_patience = loss_patience
+        self.patience = loss_patience
         self.early_stopping = early_stopping
         self.save_path = os.path.join(save_path)
         self.criterion = criterion
@@ -230,7 +230,7 @@ class AnalyzeBirdnet():
     def start_training(self, epochs, scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
         self.summary()
         self.birdnet.train()
-        monitoring = monitor.Monitor(self.loss_patience, self.early_stopping)
+        monitoring = monitor.Monitor(self.patience, self.early_stopping)
         version = 0
         train_acc_list = []
         test_acc_list = []
@@ -269,9 +269,9 @@ class AnalyzeBirdnet():
                   train_top1=train_top1, val_loss=test_loss_subdivision[0], val_top1=val_top1))
             
             if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE and i%5 != 1:
-                status = monitoring.update(test_loss_subdivision[0].avg, lr=self.lr)
+                status = monitoring.update(test_loss_subdivision[0].avg, test_acc_list.avg, lr=self.lr)
             elif scaling_factor_mode == Scaling_Factor_Mode.TOGETHER:
-                status = monitoring.update(test_loss_subdivision[0].avg, lr=self.lr)
+                status = monitoring.update(test_loss_subdivision[0].avg, val_top1.avg, lr=self.lr)
             
             if (status == monitor.Status.LEARNING_RATE):
                 self.lr *= 0.5
