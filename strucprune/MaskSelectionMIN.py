@@ -1,6 +1,7 @@
 import re
 import torch 
 import numpy as np
+from prune import Pruning_Structure
 
 from strucprune.MaskSelection import SelectMask
 
@@ -69,7 +70,7 @@ class SelectMaskMin(SelectMask):
             key1 = ds_layer_list[i]
             key2 = ds_layer_list[i+1] 
             key3 = ds_layer_list[i+2] 
-            if part == "resblock":
+            if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key1) or re.search(self.last_bn_layer_of_dsblock_pattern, key1):
                     mask1, mask2, mask3 = self.create_mask_dsblock(ds_layers[key1], ds_layers[key2], ds_layers[key3], 0)
                     masks[key1] = mask1

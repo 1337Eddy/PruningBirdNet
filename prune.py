@@ -20,6 +20,10 @@ class Channel_Pruning_Mode(Enum):
     MIN = 2
     CURL = 3
 
+class Pruning_Structure(Enum):
+    RESBLOCK = 0
+    ALL = 1
+
 def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
     data = DataLabels(dataset_path + "train/",)
     analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path,
@@ -66,11 +70,9 @@ def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel
 
     return birdnet
 
-def check_ratios(channel_ratio, block_ratio):
+def check_ratios(channel_ratio):
     if channel_ratio > 1.0 or channel_ratio < 0.0:
         raise RuntimeError(f'channel_ratio has to be between 0 and 1. {channel_ratio} is not valid')
-    if block_ratio > 1.0 or block_ratio < 0.0:
-        raise RuntimeError(f'block_ratio has to be between 0 and 1. {block_ratio} is not valid')
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -90,16 +92,23 @@ def parse_arguments():
 
     args = parser.parse_args()
     channel_ratio = float(args.channel_ratio) 
-    block_ratio = float(args.block_ratio)  
+    block_ratio = int(args.block_ratio)  
     load_path = args.load_path
     save_path = args.save_path
     train_set = args.train_set
     epochs = int(args.epochs)
     scaling_factor_mode = args.scaling_factors_mode
     scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
-    prune_structure = args.prune_structure
 
-    check_ratios(channel_ratio, block_ratio)
+    if args.prune_structure == "RESBLOCK":    
+        prune_structure = Pruning_Structure.RESBLOCK
+    elif args.prune_structure == "ALL":
+        prune_structure = Pruning_Structure.ALL
+    else:
+        raise RuntimeError(f'{args.prune_structure} is no valid argument. Input RESBLOCK or ALL')
+
+
+    check_ratios(channel_ratio)
 
 
     dim_handling = args.dim_handling
@@ -107,6 +116,9 @@ def parse_arguments():
         dim_handling = model.Dim_Handling.PADD
     elif dim_handling == "SKIP":
         dim_handling = model.Dim_Handling.SKIP
+    else: 
+        raise RuntimeError(f'{dim_handling} is no valid argument. Input PADD or SKIP')
+
 
     finetune = args.finetune
     if finetune == "True":
@@ -141,7 +153,7 @@ def parse_arguments():
 if __name__ == '__main__':
     channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure = parse_arguments()
     
-    folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(100*block_ratio)}_{mode._name_}/"
+    folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(block_ratio)}_{mode._name_}/"
     save_path += folder_name        
     checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']

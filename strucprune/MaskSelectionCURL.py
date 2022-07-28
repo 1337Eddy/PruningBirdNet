@@ -1,6 +1,7 @@
 import re
 import torch 
 import numpy as np
+from prune import Pruning_Structure
 
 from strucprune.MaskSelection import SelectMask
 
@@ -60,7 +61,7 @@ class SelectMaskCURL(SelectMask):
         layers = self.sort_dict_by_key(layers_temp)
 
         for key in list(layers): 
-            if part == "resblock":
+            if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key):
                     mask = self.create_mask(layers[key], 0)
                     masks[key] = mask.cuda()

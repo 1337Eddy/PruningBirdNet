@@ -19,9 +19,16 @@ def prune_blocks(model_state_dict, filters, ratio):
 
     scaling_factors = sorted(scaling_factors, key=lambda x: x[1], reverse=True)
 
-    threshold = scaling_factors[round((len(scaling_factors)-1) * ratio)][0]
-    if int((len(scaling_factors)-1) * ratio) == len(scaling_factors) - 1:
+    if ratio > len(scaling_factors) or ratio < 0:
+        raise RuntimeError(f'{ratio} is no valid argument. It has to be an Integer between 0 and {len(scaling_factors)-1}')
+
+    
+    if ratio >= len(scaling_factors) - 1:
         threshold = 1.0
+    elif ratio <= 0:
+        threshold = 0.0
+    else: 
+        threshold = scaling_factors[ratio][0]
 
     #Iterate over filters to build names of saved layers and find layers to drop
     for i in range(1, len(filters) - 1):

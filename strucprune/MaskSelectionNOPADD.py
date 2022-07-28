@@ -1,6 +1,7 @@
 import re
 from numpy import sort
-import torch 
+import torch
+from prune import Pruning_Structure 
 
 from strucprune.MaskSelection import SelectMask
 
@@ -22,7 +23,7 @@ class SelectMaskNoPadd(SelectMask):
 
             
         for key in list(fst_layers): 
-            if part == "resblock":
+            if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key) or re.search(self.last_bn_layer_of_dsblock_pattern, key):
                     mask = self.create_mask(fst_layers[key], 0)
                     masks[key] = mask.cuda()

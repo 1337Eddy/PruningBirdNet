@@ -1,5 +1,6 @@
 import re
-import torch 
+import torch
+from prune import Pruning_Structure 
 
 from strucprune.MaskSelection import SelectMask
 
@@ -19,7 +20,7 @@ class SelectMaskEvenly(SelectMask):
 
 
         for key in list(layers): 
-            if part == "resblock":
+            if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key) or re.search(self.last_bn_layer_of_dsblock_pattern, key):
                     mask = self.create_mask(layers[key], 0)
                     masks[key] = mask.cuda()
