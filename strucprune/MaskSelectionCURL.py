@@ -1,3 +1,4 @@
+import re
 import torch 
 import numpy as np
 
@@ -45,25 +46,26 @@ class SelectMaskCURL(SelectMask):
     def get_masks(self, model_state_dict, ratio, block_temperature=0.0, part="ALL"):
         masks = {}
         
-        if part == "ALL":
-            fst_layers = self.select_layers(model_state_dict, [self.fst_bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
-            snd_layers = self.select_layers(model_state_dict, [self.snd_bn_layer_in_resblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
-        else: 
-            fst_layers = self.select_layers(model_state_dict, self.fst_bn_layer_in_resblock_pattern) 
-            snd_layers = self.select_layers(model_state_dict, self.snd_bn_layer_in_resblock_pattern) 
+        
+        fst_layers = self.select_layers(model_state_dict, [self.fst_bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern])     
+        snd_layers = self.select_layers(model_state_dict, [self.snd_bn_layer_in_resblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
+
 
         stacks = self.group_key_name_list_in_stacks(list(snd_layers.keys()))
         
         sum_of_snd_bn_layer_per_resstack = self.sum_layers_in_stack(stacks, model_state_dict)
 
         layers_temp = {**fst_layers, **sum_of_snd_bn_layer_per_resstack}
-        keys = self.sort_keys(layers_temp)
 
-        layers = {}
-        for key in keys:
-            layers[key] = layers_temp[key]
+        layers = self.sort_dict_by_key(layers_temp)
 
         for key in list(layers): 
+            if part == "resblock":
+                if re.search(self.bn_layer_in_dsblock_pattern, key):
+                    mask = self.create_mask(layers[key], 0)
+                    masks[key] = mask.cuda()
+                    continue
             mask = self.create_mask(layers[key], ratio)
             masks[key] = mask
+
         return masks

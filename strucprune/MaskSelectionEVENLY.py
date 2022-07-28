@@ -1,3 +1,4 @@
+import re
 import torch 
 
 from strucprune.MaskSelection import SelectMask
@@ -13,16 +14,16 @@ class SelectMaskEvenly(SelectMask):
         return mask 
 
     def get_masks(self, model_state_dict, ratio, block_temperature, part="ALL"):
-        masks = {}
-        
-        if part == "ALL":
-            layers = self.select_layers(model_state_dict, [self.bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
-        else: 
-            layers = self.select_layers(model_state_dict, self.bn_layer_in_resblock_pattern) 
+        masks = {}     
+        layers = self.select_layers(model_state_dict, [self.bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
+
 
         for key in list(layers): 
-            #ratio = self.get_temperature_ratio(key, ratio, block_temperature)
-            #print(ratio)
+            if part == "resblock":
+                if re.search(self.bn_layer_in_dsblock_pattern, key) or re.search(self.last_bn_layer_of_dsblock_pattern, key):
+                    mask = self.create_mask(layers[key], 0)
+                    masks[key] = mask.cuda()
+                    continue
             mask = self.create_mask(layers[key], ratio)
             masks[key] = mask.cuda()
         return masks

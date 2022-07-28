@@ -1,3 +1,4 @@
+import re
 from numpy import sort
 import torch 
 
@@ -13,13 +14,19 @@ class SelectMaskNoPadd(SelectMask):
         mask[indices] = True
         return mask 
 
-    def get_masks(self, model_state_dict, ratio, block_temperature):
+    def get_masks(self, model_state_dict, ratio, block_temperature, part="ALL"):
         masks = {}
         
-        fst_layers = self.select_layers(model_state_dict, self.fst_bn_layer_in_resblock_pattern) 
-        snd_layers = self.select_layers(model_state_dict, self.snd_bn_layer_in_resblock_pattern) 
+        fst_layers = self.select_layers(model_state_dict, [self.fst_bn_layer_in_resblock_pattern, self.bn_layer_in_dsblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
+        snd_layers = self.select_layers(model_state_dict, [self.snd_bn_layer_in_resblock_pattern, self.last_bn_layer_of_dsblock_pattern]) 
 
+            
         for key in list(fst_layers): 
+            if part == "resblock":
+                if re.search(self.bn_layer_in_dsblock_pattern, key) or re.search(self.last_bn_layer_of_dsblock_pattern, key):
+                    mask = self.create_mask(fst_layers[key], 0)
+                    masks[key] = mask.cuda()
+                    continue
             mask = self.create_mask(fst_layers[key], ratio)
             masks[key] = mask
         
@@ -28,5 +35,4 @@ class SelectMaskNoPadd(SelectMask):
             masks[key] = mask
 
         masks = self.sort_dict_by_key(masks)
-
         return masks

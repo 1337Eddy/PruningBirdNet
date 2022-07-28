@@ -79,10 +79,26 @@ class SelectMask():
         stacks.append(temp)
         return stacks 
 
+    def sort_keys(self, layers_temp):
+        keys = sorted(layers_temp)
+
+        skip_counter = 0
+        for i in range(0, len(keys)):  
+            if skip_counter > 0:
+                skip_counter -= 1
+                continue    
+            if "batchnorm" in keys[i]:
+                tmp = keys[i]
+                keys[i] = keys[i+1]
+                keys[i+1] = keys[i+2]
+                keys[i+2] = tmp 
+                skip_counter = 2
+        return keys
+
     def sort_dict_by_key(self, dict):
         buffer = {}
         keys = dict.keys()
-        keys = sorted(keys)
+        keys = self.sort_keys(keys)
         for key in keys:
             buffer[key] = dict[key] 
         return buffer

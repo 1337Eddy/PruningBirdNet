@@ -202,28 +202,6 @@ def update_filter_all(filters, keys_grouped_in_stacks, model_state_dict):
         filters[i+1] = new_filters[i]
     return filters
 
-def update_filter_resblock(filters, keys_grouped_in_stacks, model_state_dict):
-    buffer = []
-    new_filters = []
-    for stack in keys_grouped_in_stacks:
-        filters_per_stack = []
-        for key in stack:
-            layer_size = len(model_state_dict[key])
-            if len(buffer) < 2:
-                buffer.append(layer_size)
-            else: 
-                filters_per_stack.append(buffer)
-                buffer = [layer_size]
-        filters_per_stack.append(buffer)
-        buffer = []
-        new_filters.append(filters_per_stack)
-
-        filters_per_stack = []
-
-    for i in range(0, len(new_filters)):
-        filters[i+1][1:] = new_filters[i]
-    return filters
-
 def create_module_mask_list(masks):
     last_key = None
     for key, item in masks.items():
@@ -234,7 +212,7 @@ def create_module_mask_list(masks):
             module_mask_list[name] = [item]
             last_key = name
 
-def prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, block_temperature=0.5, prune_structure="ALL"):
+def prune_channels(model_state_dict, mode, channel_ratio, filters, block_temperature, prune_structure):
     select_mask = SelectMask(model_state_dict)
     if mode.value == 2:
         select_mask = SelectMaskMin(model_state_dict)
@@ -244,7 +222,7 @@ def prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, bloc
         select_mask = SelectMaskNoPadd(model_state_dict)
     elif mode.value == 3:
         select_mask = SelectMaskCURL(model_state_dict)
-    masks = select_mask.get_masks(model_state_dict, channel_ratio, block_temperature)
+    masks = select_mask.get_masks(model_state_dict, channel_ratio, block_temperature, part=prune_structure)
 
     model_state_dict = apply_masks(model_state_dict, masks)
 
@@ -253,17 +231,15 @@ def prune_channels(model_state_dict, mode, channel_ratio=0.4, filters=None, bloc
 
     keys_grouped_in_stacks = select_mask.group_key_name_list_in_stacks(list(masks.keys()))
 
-    if prune_structure == "ALL":
-        filters = update_filter_all(filters, keys_grouped_in_stacks, model_state_dict)
-    else: 
-        filters = update_filter_resblock(filters, keys_grouped_in_stacks, model_state_dict)
+    filters = update_filter_all(filters, keys_grouped_in_stacks, model_state_dict)
 
     return model_state_dict, filters
         
 
 
 def prune(model_state_dict, ratio, filters, mode, channel_ratio, prune_structure, block_momentum=True):
-    model_state_dict, filters = prune_channels(copy.copy(model_state_dict), mode=mode, filters=copy.copy(filters), channel_ratio=channel_ratio, prune_structure=prune_structure)
+    model_state_dict, filters = prune_channels(copy.copy(model_state_dict), mode=mode, filters=copy.copy(filters), 
+                                                channel_ratio=channel_ratio, block_temperature=0.5, prune_structure=prune_structure)
     birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()
