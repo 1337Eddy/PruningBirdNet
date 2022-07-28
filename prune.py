@@ -40,7 +40,8 @@ def test(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1data
 
     return loss, top1
 
-def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5, dim_handling=model.Dim_Handling.PADD, prune_structure="ALL"):
+def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5, 
+                    dim_handling=model.Dim_Handling.PADD, prune_structure="ALL", block_temperatur=0):
     checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
 
@@ -59,7 +60,7 @@ def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel
     #Load parameter to model
     birdnet.load_state_dict(model_state_dict)
 
-    model_state_dict, filters = PruneChannels.prune(model_state_dict, ratio, filters, mode, channel_ratio, prune_structure)
+    model_state_dict, filters = PruneChannels.prune(model_state_dict, ratio, filters, mode, channel_ratio, prune_structure, block_temperatur)
 
     birdnet = model.BirdNet(filters=filters, dimension_handling=dim_handling)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
@@ -88,6 +89,7 @@ def parse_arguments():
     parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--simultaneous', default="True")
     parser.add_argument('--prune_structure', default="ALL")
+    parser.add_argument('--block_temperatur', default=0)
 
 
     args = parser.parse_args()
@@ -99,6 +101,9 @@ def parse_arguments():
     epochs = int(args.epochs)
     scaling_factor_mode = args.scaling_factors_mode
     scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
+    block_temperatur = float(args.block_temperatur)
+
+
 
     if args.prune_structure == "RESBLOCK":    
         prune_structure = Pruning_Structure.RESBLOCK
@@ -109,6 +114,7 @@ def parse_arguments():
 
 
     check_ratios(channel_ratio)
+
 
 
     dim_handling = args.dim_handling
@@ -148,10 +154,10 @@ def parse_arguments():
     else: 
         raise RuntimeError('{mode} is no valid argument. Input NO_PADD, MIN, CURL or EVENLY')
     
-    return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure
+    return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur
 
 if __name__ == '__main__':
-    channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure = parse_arguments()
+    channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur = parse_arguments()
     
     folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(block_ratio)}_{mode._name_}/"
     save_path += folder_name        
@@ -161,7 +167,8 @@ if __name__ == '__main__':
 
 
     if simultaneous or (block_ratio == 0.0 or channel_ratio == 0.0):
-        birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=channel_ratio, dim_handling=dim_handling, prune_structure=prune_structure)
+        birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=channel_ratio, 
+                dim_handling=dim_handling, prune_structure=prune_structure, block_temperatur=block_temperatur)
         if finetune:
             retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode)
     else: 

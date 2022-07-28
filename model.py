@@ -119,7 +119,7 @@ class Resblock(nn.Module):
                             nn.BatchNorm2d(num_features=num_filters[1])]
 
         self.classifier = nn.Sequential(*self.layer_list)
-        self.W = torch.nn.Parameter(torch.randn(2))
+        self.W = torch.nn.Parameter(torch.tensor([0.5, 0.5]))
         self.W.requires_grad = True
         self.softmax = nn.Softmax(dim=0)
 
@@ -175,12 +175,13 @@ class DownsamplingResBlock(nn.Module):
             nn.MaxPool2d(2),
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[2], kernel_size=(1,1))
         )
-        self.W = torch.nn.Parameter(torch.randn(2))
+        self.W = torch.nn.Parameter(torch.tensor([0.5, 0.5]))
+        self.W.requires_grad = True
+
 
         self.batchnorm = nn.Sequential(
             nn.BatchNorm2d(num_features=num_filters[2]),
         )
-        self.W.requires_grad = True
         self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):

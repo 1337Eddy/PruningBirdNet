@@ -20,36 +20,32 @@ class SelectMask():
         self.len_resblock = len("module.classifier.1.classifier.2")
         self.model_state_dict = model_state_dict
         self.scaling_factors = self.get_scaling_factors()
-        self.min, self.max = self.get_min_max_sacling_factors() 
 
-    
-    def scale(self, x, out_range=(-1, 1)):
-        y = (x - (self.max + self.min) / 2) / (self.max - self.min)
-        return y * (out_range[1] - out_range[0]) + (out_range[1] + out_range[0]) / 2
-
-
+    def softmax(self, tensor, alpha):
+        new = []
+        for elem in tensor:
+            zaehler = np.exp(elem) ** alpha
+            nenner = 0
+            for i in tensor:
+                nenner += np.exp(i) ** alpha 
+            new.append(zaehler/nenner)
+        return new 
 
     def get_temperature_ratio(self, key, ratio, temperature):
+        factors = []
+        for _, item in self.scaling_factors.items():
+            factors.append(item[0].cpu())
+
+        scaling_factors = torch.tensor(self.softmax(factors, temperature))*len(self.scaling_factors)
         elem_of_resblock = re.search(self.resstack_pattern, key)
         if elem_of_resblock:
             key = key[:32]
-            value = self.scaling_factors[key][0]
-            spread = min(ratio, 1-ratio)
-            scale = self.scale(value, (-spread, spread))*temperature
-            print(scale)
-            return ratio + scale
+            index = list(self.scaling_factors.keys()).index(key)
+            factors = scaling_factors * ratio 
+            new_factor = torch.tanh(factors)[index]
+            return new_factor
         else: 
             return ratio 
-
-    def get_min_max_sacling_factors(self):
-        min = 1
-        max = 0
-        for _, item in self.scaling_factors.items():
-            if item[0] < min:
-                min = item[0]
-            if item[0] > max:
-                max = item[0]
-        return min, max
 
     def get_scaling_factors(self):
         pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]\.W"

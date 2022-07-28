@@ -237,9 +237,9 @@ def prune_channels(model_state_dict, mode, channel_ratio, filters, block_tempera
         
 
 
-def prune(model_state_dict, ratio, filters, mode, channel_ratio, prune_structure, block_momentum=True):
+def prune(model_state_dict, ratio, filters, mode, channel_ratio, prune_structure, block_temperature):
     model_state_dict, filters = prune_channels(copy.copy(model_state_dict), mode=mode, filters=copy.copy(filters), 
-                                                channel_ratio=channel_ratio, block_temperature=0.5, prune_structure=prune_structure)
+                                                channel_ratio=channel_ratio, block_temperature=block_temperature, prune_structure=prune_structure)
     birdnet = model.BirdNet(filters=filters)
     birdnet = torch.nn.DataParallel(birdnet).cuda()
     birdnet = birdnet.float()

@@ -31,7 +31,7 @@ threshold = 0.5
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=1, early_stopping=2, gamma=0.5, delta=0.5):
+                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=3, early_stopping=6, gamma=0.5, delta=0.5):
 
         torch.cuda.manual_seed(1337)
         torch.manual_seed(73)
@@ -82,6 +82,19 @@ class AnalyzeBirdnet():
                         sum += torch.sum(torch.abs(snd_layer))
                         counter += len(fst_layer)
                         counter += len(snd_layer)
+
+                    if isinstance(resblock, model.DownsamplingResBlock): 
+                        fst_layer = resblock.classifierPath[1].weight.cpu()
+                        snd_layer = resblock.classifierPath[4].weight.cpu()
+                        last_layer = resblock.batchnorm[0].weight.cpu()
+                        sum += torch.sum(torch.abs(fst_layer))
+                        sum += torch.sum(torch.abs(snd_layer))
+                        sum += torch.sum(torch.abs(last_layer))
+                        counter += len(fst_layer)
+                        counter += len(snd_layer)
+                        counter += len(last_layer)
+                        
+
         if sum != 0:
             sum.cuda()
         else: 

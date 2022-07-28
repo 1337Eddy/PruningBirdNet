@@ -20,11 +20,13 @@ class SelectMaskEvenly(SelectMask):
 
 
         for key in list(layers): 
+            new_ratio = self.get_temperature_ratio(key, ratio, block_temperature)
+            #print(f"{key}: {new_ratio}")
             if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key) or re.search(self.last_bn_layer_of_dsblock_pattern, key):
                     mask = self.create_mask(layers[key], 0)
                     masks[key] = mask.cuda()
                     continue
-            mask = self.create_mask(layers[key], ratio)
+            mask = self.create_mask(layers[key], new_ratio)
             masks[key] = mask.cuda()
         return masks
