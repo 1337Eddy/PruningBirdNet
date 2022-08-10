@@ -53,14 +53,13 @@ def get_mask_to_key(key):
     ds_block_skip_path = re.search(pattern_ds_block_skip_path, key)
     resblock = re.search(pattern_resblock, key)
     resstack_appendix = re.search(pattern_resstack_appendix, key)
-
     for i, name in zip(range(0, len(key_names)), key_names):
         if ds_block_classifier_path:
             if key[resstack_index] == name[resstack_index] and key[resblock_index] == name[resblock_index]:
                 ds_cp_number = int(key[classifierPath_index])
                 if ds_cp_number < 2:
                     index_key = key_names[i-1]
-                    mask = module_mask_list[index_key][1] 
+                    mask = module_mask_list[index_key][-1] 
                 elif ds_cp_number < 4:
                     mask = module_mask_list[name][0]
                 else: 
@@ -73,7 +72,7 @@ def get_mask_to_key(key):
                 ds_sp_number = int(key[skipPath_index])
                 if ds_sp_number < 2:
                     index_key = key_names[i-1]
-                    mask = module_mask_list[index_key][1] 
+                    mask = module_mask_list[index_key][-1] 
                 return mask
             else: 
                 continue
@@ -94,7 +93,7 @@ def get_mask_to_key(key):
         elif resstack_appendix:
             if int(key[resstack_index]) + 1 <= int(name[resstack_index]):
                 index_key = key_names[i-1]
-                mask = module_mask_list[index_key][1]
+                mask = module_mask_list[index_key][-1]
                 return mask
             else: 
                 continue
@@ -106,6 +105,7 @@ def get_mask_to_key(key):
 def fix_dim_problems(new_state_dict, state_dict):
     
     for key, value in new_state_dict.items():
+        #print(key)
         shape = np.shape(state_dict[key])
         if value.dim() > 1:   
             if np.shape(new_state_dict[key]) == np.shape(state_dict[key]):
@@ -223,7 +223,7 @@ def prune_channels(model_state_dict, mode, channel_ratio, filters, block_tempera
     elif mode.value == 3:
         select_mask = SelectMaskCURL(model_state_dict)
     masks = select_mask.get_masks(model_state_dict, channel_ratio, block_temperature, part=prune_structure)
-
+    
     model_state_dict = apply_masks(model_state_dict, masks)
 
     create_module_mask_list(masks)
@@ -232,6 +232,7 @@ def prune_channels(model_state_dict, mode, channel_ratio, filters, block_tempera
     keys_grouped_in_stacks = select_mask.group_key_name_list_in_stacks(list(masks.keys()))
 
     filters = update_filter_all(filters, keys_grouped_in_stacks, model_state_dict)
+
 
     return model_state_dict, filters
         
