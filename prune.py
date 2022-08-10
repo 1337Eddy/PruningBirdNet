@@ -82,7 +82,7 @@ def parse_arguments():
     parser.add_argument('--finetune', default='True')
     parser.add_argument('--epochs', default=10, help='Specify number of epochs for training')
     parser.add_argument('--channel_ratio', default=0.3)
-    parser.add_argument('--block_ratio', default=0.2)
+    parser.add_argument('--block_ratio', default=0)
     parser.add_argument('--mode', default="CURL")
     parser.add_argument('--train_set', default="1dataset/1data/calls/")
     parser.add_argument('--scaling_factors_mode', default='together')
@@ -159,7 +159,7 @@ def parse_arguments():
 if __name__ == '__main__':
     channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur = parse_arguments()
     
-    folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(block_ratio)}_{mode._name_}/"
+    folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(block_ratio)}_{mode._name_}_temp{block_temperatur}_mode{prune_structure.name}/"
     save_path += folder_name        
     checkpoint = torch.load(load_path)
     model_state_dict = checkpoint['model_state_dict']
