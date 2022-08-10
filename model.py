@@ -11,25 +11,25 @@ class Dim_Handling(Enum):
     CUT = 1
     SKIP = 2
 
-KERNEL_SIZES = [(5, 5), (3, 3), (3, 3), (3, 3), (3, 3)]
+
 
 
 
 class BirdNet(nn.Module):
-    def __init__(self, filters, dimension_handling=Dim_Handling.PADD, handling_block=Dim_Handling.PADD):
+    def __init__(self, filters, dimension_handling=Dim_Handling.PADD, 
+                kernel_sizes=[(5, 5), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3)], weight_blocks=True):
         super(BirdNet, self).__init__()
 
         global dim_handling
-        global block_handling 
+        global weight_block
+        weight_block = weight_blocks
         dim_handling = dimension_handling
-        block_handling = handling_block
         self.layers = [InputLayer(in_channels=1, num_filters=filters[0][0][0])]
 
         for i in range(1, len(filters) - 1):
             in_channels = filters[i-1][-1][-1]
-
             self.layers += [ResStack(num_filters=filters[i], in_channels=in_channels, 
-                            kernel_size=KERNEL_SIZES[i-1])]
+                            kernel_size=kernel_sizes[i-1])]
 
         self.layers += [nn.BatchNorm2d(filters[-2][-1][-1])]
         self.layers += [nn.ReLU(True)]
@@ -119,14 +119,18 @@ class Resblock(nn.Module):
                             nn.BatchNorm2d(num_features=num_filters[1])]
 
         self.classifier = nn.Sequential(*self.layer_list)
-        self.W = torch.nn.Parameter(torch.tensor([0.5, 0.5]))
+        self.W = torch.nn.Parameter(torch.tensor([1.0, 1.0]))
         self.W.requires_grad = True
         self.softmax = nn.Softmax(dim=0)
 
 
 
     def forward(self, x):
-        scaling_factors = self.softmax(self.W)
+        if weight_block:
+            scaling_factors = self.softmax(self.W)
+        else: 
+            scaling_factors = [1.0, 1.0]
+
         skip = x 
         skip = torch.mul(skip, scaling_factors[1])
         x = self.classifier(x)
@@ -175,7 +179,7 @@ class DownsamplingResBlock(nn.Module):
             nn.MaxPool2d(2),
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[2], kernel_size=(1,1))
         )
-        self.W = torch.nn.Parameter(torch.tensor([0.5, 0.5]))
+        self.W = torch.nn.Parameter(torch.tensor([1.0, 1.0]))
         self.W.requires_grad = True
 
 
@@ -185,7 +189,11 @@ class DownsamplingResBlock(nn.Module):
         self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):
-        scaling_factors = self.softmax(self.W)
+        if weight_block:
+            scaling_factors = self.softmax(self.W)
+        else: 
+            scaling_factors = [1.0, 1.0]
+
         skip = self.skipPath(x)
         skip = torch.mul(skip, scaling_factors[1])
         x = self.classifierPath(x)
