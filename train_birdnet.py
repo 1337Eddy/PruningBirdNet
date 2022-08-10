@@ -1,6 +1,7 @@
 import re
 import os
 from enum import Enum
+import time
 from black import out
 from matplotlib.pyplot import sca
 import torch
@@ -40,9 +41,12 @@ class AnalyzeBirdnet():
         test_dataset = CallsDataset(dataset_path + "test/")
         val_dataset = CallsDataset(dataset_path + "val/")
 
+        #time_test_dataset = CallsDataset("/media/eddy/datasets/birdclef/")
+
         self.train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
         self.test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
         self.val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+        #self.time_test_loader = DataLoader(time_test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
 
         self.dataset = dataset
         self.gamma=gamma
@@ -186,14 +190,27 @@ class AnalyzeBirdnet():
         losses_channel = AverageMeter()
         losses_acc = AverageMeter()
         top1 = AverageMeter()
-        data_loader = self.test_loader if mode == "test" else self.val_loader
+        mean_time = AverageMeter()
+        if mode == "test":
+            data_loader = self.test_loader 
+        elif mode == "val":
+            data_loader = self.val_loader
+        elif mode == "train":
+            data_loader = self.train_loader
+        else:
+            data_loader = self.time_test_loader
+
         for data, target in data_loader:
             torch.cuda.empty_cache()
 
             data, target = self.prepare_data_and_labels(data, target)
 
             #Run model
+            start = time.time()
             output = self.birdnet(data.float())
+            stop = time.time()
+            mean_time.update(stop-start)
+
             output = np.squeeze(output)
             
             if output.dim() == 1:
@@ -209,6 +226,7 @@ class AnalyzeBirdnet():
             prec = accuracy(output.data, target)
             top1.update(prec, data.size(0))
         loss_subdivision = [losses, losses_block, losses_channel, losses_acc]
+        print(f"{mode} has taken {mean_time.sum:.4f}s in average {mean_time.avg:.6f}s")
         return loss_subdivision, top1
 
 
@@ -240,7 +258,7 @@ class AnalyzeBirdnet():
     """
     Train loop that trains the model for some epochs and handels learning rate reduction and checkpoint save
     """
-    def start_training(self, epochs, scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
+    def start_training(self, epochs, scaling_factor_mode=Scaling_Factor_Mode.SEPARATE, save_mode=-1):
         self.summary()
         self.birdnet.train()
         monitoring = monitor.Monitor(self.patience, self.early_stopping)
@@ -263,7 +281,7 @@ class AnalyzeBirdnet():
 
         
         print("Start Training")
-
+        max_accuracy = 0
         for i in range(0, epochs):
             if scaling_factor_mode == Scaling_Factor_Mode.SEPARATE:
                 self.freeze_scaling_factors(i%5==1)
@@ -290,8 +308,16 @@ class AnalyzeBirdnet():
                 self.lr *= 0.5
             elif (status == monitor.Status.STOP):
                 break 
-
-            if (i % 5 == 0):
+            
+            if save_mode == -1:
+                if val_top1.avg > max_accuracy:
+                    max_accuracy = val_top1.avg
+                    print("Save checkpoint: " + self.save_path + "birdnet_v" + str(version) + ".pt")
+                    self.save_model(i, self.birdnet, self.optimizer, test_loss_subdivision[0], val_top1, 
+                        train_loss_subdivision_list, test_loss_subdivision_list, train_acc_list, test_acc_list, 
+                        self.save_path + "birdnet_v" + str(version) + ".pt", filters=self.birdnet.module.filters)       
+                    version += 1
+            elif (i % save_mode == 0):
                 print("Save checkpoint: " + self.save_path + "birdnet_v" + str(version) + ".pt")
                 self.save_model(i, self.birdnet, self.optimizer, test_loss_subdivision[0], val_top1, 
                     train_loss_subdivision_list, test_loss_subdivision_list, train_acc_list, test_acc_list, 
