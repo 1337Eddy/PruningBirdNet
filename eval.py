@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from utils import audio
 import os
@@ -34,7 +35,10 @@ class EvalBirdnet():
                     counter +=1 
                 else: 
                     batch = batch.cuda(non_blocking=True)
+                    start = time.time()
                     output = self.birdnet(batch.float())   
+                    stop = time.time()
+                    print(stop-start)
                     output = torch.squeeze(output)
                     for pred in output:
                         estimation = self.softmax(np.array(pred.cpu().detach()))
@@ -53,7 +57,10 @@ class EvalBirdnet():
                 try:
                     if (batch != None):
                         batch = batch.cuda(non_blocking=True)
+                        start = time.time()
                         output = self.birdnet(batch.float())   
+                        stop = time.time()
+                        print(stop-start)
                         output = torch.squeeze(output)
                         if (np.shape(output) == torch.Size([self.dataset.num_classes])):
                             output = output[None, :]
