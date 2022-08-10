@@ -20,6 +20,8 @@ class SelectMask():
         self.len_resblock = len("module.classifier.1.classifier.2")
         self.model_state_dict = model_state_dict
         self.scaling_factors = self.get_scaling_factors()
+        #for key, item in self.scaling_factors.items():
+        #    print(f"key: {key} item: {item}")
 
     def softmax(self, tensor, alpha):
         new = []
@@ -41,8 +43,9 @@ class SelectMask():
         if elem_of_resblock:
             key = key[:32]
             index = list(self.scaling_factors.keys()).index(key)
-            factors = scaling_factors * ratio 
-            new_factor = torch.tanh(factors)[index]
+            factors = ratio + (ratio - scaling_factors*ratio)
+            new_factor = torch.relu(torch.tanh(1.3 * factors))[index]
+
             return new_factor
         else: 
             return ratio 
