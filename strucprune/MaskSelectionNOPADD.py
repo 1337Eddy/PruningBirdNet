@@ -23,12 +23,13 @@ class SelectMaskNoPadd(SelectMask):
 
             
         for key in list(fst_layers): 
+            new_ratio = self.get_temperature_ratio(key, ratio, block_temperature)
             if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key) or re.search(self.last_bn_layer_of_dsblock_pattern, key):
                     mask = self.create_mask(fst_layers[key], 0)
                     masks[key] = mask.cuda()
                     continue
-            mask = self.create_mask(fst_layers[key], ratio)
+            mask = self.create_mask(fst_layers[key], new_ratio)
             masks[key] = mask
         
         for key in list(snd_layers):
