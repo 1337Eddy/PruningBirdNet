@@ -51,4 +51,5 @@ def generate_onnx_for_all(path):
         #plot_train_phase(path + "birdnet_final.pt", path + "train_phase")
         export_onnx(path + "birdnet_final.pt", path + "model.onnx")
 
-#generate_onnx_for_all("/media/eddy/datasets/models/")
+
+generate_onnx_for_all("/media/eddy/datasets/models/new/pruned/channel_90/block_0/")

@@ -32,10 +32,12 @@ threshold = 0.5
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=3, early_stopping=6, gamma=0.5, delta=0.5):
+                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=3, early_stopping=6, gamma=0.5, delta=0.5, device="cuda"):
 
         torch.cuda.manual_seed(1337)
         torch.manual_seed(73)
+
+        self.device = device
 
         train_dataset = CallsDataset(dataset_path + "train/")
         test_dataset = CallsDataset(dataset_path + "test/")
@@ -55,8 +57,13 @@ class AnalyzeBirdnet():
         self.save_path = os.path.join(save_path)
         self.criterion = criterion
         self.lr = lr
-        self.criterion = nn.CrossEntropyLoss().cuda()
-        self.birdnet = birdnet
+        if device == "cuda":
+            self.criterion = nn.CrossEntropyLoss().cuda()
+            self.birdnet = birdnet
+        elif device == "cpu":
+            self.criterion = nn.CrossEntropyLoss()
+            self.birdnet = birdnet.module.to(torch.device('cpu'))
+
         self.optimizer = optim.Adam(self.birdnet.parameters(), lr=self.lr) 
         self.delta = delta
 
@@ -76,7 +83,12 @@ class AnalyzeBirdnet():
     def sum_conv_layer_scaling_factors(self):
         counter = 0
         sum = 0
-        for resstack in self.birdnet.module.classifier:
+        if self.device == "cuda": 
+            classifier = self.birdnet.module.classifier 
+        else: 
+            classifier = self.birdnet.classifier
+
+        for resstack in classifier:
             if isinstance(resstack, model.ResStack):
                 for resblock in resstack.classifier:
                     if isinstance(resblock, model.Resblock): 
@@ -109,11 +121,17 @@ class AnalyzeBirdnet():
         """
         Brings data and labels to cuda and maps target labels to one hot enconding array for classification
         """
-        data = data.cuda(non_blocking=True)    
-        data = Variable(data)       
+  
+           
         target = self.dataset.labels_to_one_hot_encondings(target)
         target= torch.from_numpy(target)
-        target = target.cuda(non_blocking=True)
+
+        if self.device == "cuda":
+            data = data.cuda(non_blocking=True)    
+            target = target.cuda(non_blocking=True)
+        elif self.device == "cpu":
+            pass
+        data = Variable(data)  
         target = Variable(target)
         return data, target
 
@@ -199,6 +217,7 @@ class AnalyzeBirdnet():
             data_loader = self.train_loader
         else:
             data_loader = self.time_test_loader
+            
 
         for data, target in data_loader:
             torch.cuda.empty_cache()
@@ -332,7 +351,7 @@ class AnalyzeBirdnet():
     
 
     def summary(self):
-        summary(self.birdnet)
+        summary(self.birdnet, (1, 64, 512))
 
     def softmax(self, x):
         f_x = np.exp(x) / np.sum(np.exp(x))

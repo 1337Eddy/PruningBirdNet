@@ -1,16 +1,9 @@
+import argparse
 import torch
 
 def flop_conv_layer(channels_in, channels_out, kernel, width, height):
     return ((channels_in * kernel[0] * kernel[1]) + (channels_in * kernel[0] * (kernel[1] - 1) - 1)) * channels_out * width * height, channels_out
 
-
-filters = [[[32]], 
-        [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
-        [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
-        [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
-        [512, 512, 83]]
-kernel_sizes=[(5, 5), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3)]
 
 def calc_flops(filters, kernels, input_width, input_height, channels=1):
     width = input_width
@@ -64,16 +57,20 @@ def calc_flops(filters, kernels, input_width, input_height, channels=1):
     
 
     return sum 
-checkpoint_30 = torch.load("/media/eddy/datasets/models/new/pruned/channel_30/pruned_c30_b0_CURL_temp0.0_modeALL/birdnet_final.pt")    
-checkpoint_50 = torch.load("/media/eddy/datasets/models/new/pruned/channel_50/pruned_c50_b0_CURL_temp0.0_modeALL/birdnet_final.pt")    
-checkpoint_70 = torch.load("/media/eddy/datasets/models/new/pruned/channel_70/pruned_c70_b0_CURL_temp0.0_modeALL/birdnet_final.pt")    
-checkpoint_90 = torch.load("/media/eddy/datasets/models/new/pruned/channel_90/pruned_c90_b0_CURL_temp0.0_modeALL/birdnet_raw.pt")    
 
-width = 512
-height = 64
 
-print(calc_flops(filters, kernel_sizes, width, height))
-print(calc_flops(checkpoint_30['filters'], kernel_sizes, width, height))
-print(calc_flops(checkpoint_50['filters'], kernel_sizes, width, height))
-print(calc_flops(checkpoint_70['filters'], kernel_sizes, width, height))
-print(calc_flops(checkpoint_90['filters'], kernel_sizes, width, height))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path', default='/media/eddy/datasets/models/new/pruned/channel_30/pruned_c30_b0_CURL_temp0.0_modeALL/birdnet_final.pt', help='path to file')
+    parser.add_argument('--width', default=512)
+    parser.add_argument('--height', default=64)
+    kernel_sizes=[(5, 5), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3)]
+    args = parser.parse_args()
+    checkpoint = torch.load(args.path)
+    width = args.width
+    height = args.height
+    print(calc_flops(checkpoint['filters'], kernel_sizes, width, height))
+if __name__ == '__main__':
+    main()

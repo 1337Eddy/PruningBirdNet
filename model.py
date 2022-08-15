@@ -53,7 +53,8 @@ class InputLayer(nn.Module):
         self.classifierPath = nn.Sequential(
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=1),
             nn.ReLU(True),
-            nn.BatchNorm2d(num_features=num_filters)
+            nn.BatchNorm2d(num_features=num_filters),
+            #nn.MaxPool1d(2),
         )
 
     def forward(self, x):

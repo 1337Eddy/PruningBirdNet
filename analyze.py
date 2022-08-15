@@ -31,6 +31,27 @@ class DataLabels():
         [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
         [512, 512, self.num_classes]]
 
+        # self.filters = [[[16]], 
+        # [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
+        # [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
+        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
+        # [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
+        # [256, 256, self.num_classes]]
+
+        # self.filters = [[[16]], 
+        # [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
+        # [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
+        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
+        # [128, 128, self.num_classes]]
+
+        # self.filters = [[[32]], 
+        # [[32, 32, 64], [64, 64], [64, 64]], 
+        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
+        # [[128, 128, 256], [256, 256], [256, 256], [256, 256], [256, 256], [256, 256]], 
+        # [[256, 256, 512], [512, 512], [512, 512]],
+        # [512, 512, self.num_classes]]
+
+
         self.bird_dict = {x: self.birds.index(x) for x in self.birds}
 
     def labels_to_one_hot_encondings(sefl, labels):
@@ -113,11 +134,18 @@ def main():
     elif (mode == 'test'):
         #Start Training
         analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
-                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta)
+                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta, device="cpu")
         analyze.summary()
+
+
+        # loss_subdivision, top1 = analyze.test(mode="train")
+        # print(f"accuracy train: {(top1.avg*100):.2f}%")
+        # print(f"loss train: {loss_subdivision[0].avg:.6f}")
+
         loss_subdivision, top1 = analyze.test(mode="val")
         print(f"accuracy val: {(top1.avg*100):.2f}%")
         print(f"loss val: {loss_subdivision[0].avg:.6f}")
+        
         loss_subdivision, top1 = analyze.test(mode="test")
         print(f"accuracy test: {(top1.avg*100):.2f}%")
         print(f"loss test: {loss_subdivision[0].avg:.6f}")
