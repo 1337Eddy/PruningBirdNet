@@ -54,7 +54,7 @@ class InputLayer(nn.Module):
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=1),
             nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters),
-            #nn.MaxPool1d(2),
+            nn.MaxPool2d((1,2)),
         )
 
     def forward(self, x):
@@ -210,14 +210,17 @@ class ClassificationPath(nn.Module):
         super(ClassificationPath, self).__init__()
         self.classifierPath = nn.Sequential(
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding=0),
-            nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters[0]),
-            nn.Dropout(),
-            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=(1,1)),
             nn.ReLU(True),
-            nn.BatchNorm2d(num_features=num_filters[1]),
             nn.Dropout(),
+
+            nn.Conv2d(in_channels=num_filters[0], out_channels=num_filters[1], kernel_size=(1,1)),
+            nn.BatchNorm2d(num_features=num_filters[1]),
+            nn.ReLU(True),
+            nn.Dropout(),
+
             nn.Conv2d(in_channels=num_filters[1], out_channels=num_filters[2], kernel_size=(1,1)),
+            nn.BatchNorm2d(num_features=num_filters[2]),
         )
 
     def forward(self, x):

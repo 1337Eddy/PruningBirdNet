@@ -351,7 +351,7 @@ class AnalyzeBirdnet():
     
 
     def summary(self):
-        summary(self.birdnet, (1, 64, 512))
+        summary(self.birdnet, (1, 64, 384))
 
     def softmax(self, x):
         f_x = np.exp(x) / np.sum(np.exp(x))
