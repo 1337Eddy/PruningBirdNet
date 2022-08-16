@@ -29,11 +29,11 @@ class BirdNet(nn.Module):
         for i in range(1, len(filters) - 1):
             in_channels = filters[i-1][-1][-1]
             self.layers += [ResStack(num_filters=filters[i], in_channels=in_channels, 
-                            kernel_size=kernel_sizes[i-1])]
+                            kernel_size=kernel_sizes[i])]
 
         self.layers += [nn.BatchNorm2d(filters[-2][-1][-1])]
         self.layers += [nn.ReLU(True)]
-        self.layers += [ClassificationPath(in_channels=filters[-2][-1][-1], num_filters=filters[-1], kernel_size=(4,10))]
+        self.layers += [ClassificationPath(in_channels=filters[-2][-1][-1], num_filters=filters[-1], kernel_size=(4,12))]
         self.layers += [nn.AdaptiveAvgPool2d(output_size=(1,1))]
         self.classifier = nn.Sequential(*self.layers)
         self.filters = filters
@@ -51,10 +51,10 @@ class InputLayer(nn.Module):
     def __init__(self, in_channels, num_filters):
         super(InputLayer, self).__init__()
         self.classifierPath = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=1),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=(5,5), padding=2),
             nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters),
-            nn.MaxPool2d((1,2)),
+            #nn.MaxPool2d((1,2)),
         )
 
     def forward(self, x):

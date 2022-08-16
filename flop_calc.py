@@ -10,7 +10,7 @@ def calc_flops(filters, kernels, input_width, input_height, channels=1):
     height = input_height
     sum = 0
     #Input layer
-    result, channels = flop_conv_layer(channels, filters[0][0][0], kernels[0], width, height)
+    result, channels = flop_conv_layer(channels, filters[0][0][0], (5,5), width, height)
     sum += result
     for i in range(1, len(filters) - 1):
         #Downsampling Block
@@ -18,7 +18,7 @@ def calc_flops(filters, kernels, input_width, input_height, channels=1):
         sum += result
         sum += 2* channels
 
-        result, channels = flop_conv_layer(channels, filters[i][0][1], kernels[i-1], width, height)
+        result, channels = flop_conv_layer(channels, filters[i][0][1], (3,3), width, height)
         sum += result
         sum += 2* channels
 
@@ -36,19 +36,19 @@ def calc_flops(filters, kernels, input_width, input_height, channels=1):
             skip = channels * width * height
             sum += 2* channels
 
-            result, channels = flop_conv_layer(channels, filters[i][j][0], kernels[i-1], width, height)
+            result, channels = flop_conv_layer(channels, filters[i][j][0], (3,3), width, height)
             sum += result
             sum += 2* channels
 
-            result, channels = flop_conv_layer(channels, filters[i][j][1], kernels[i-1], width, height)
+            result, channels = flop_conv_layer(channels, filters[i][j][1], (3,3), width, height)
             sum += result
             sum += 2* channels
             sum += 2*skip
 
     #Classification Path
-    result, channels = flop_conv_layer(channels, filters[-1][0], (4,10), width, height)
+    result, channels = flop_conv_layer(channels, filters[-1][0], (4,12), width, height)
     width = 1
-    height = 23
+    height = 13
     sum += result
     result, channels = flop_conv_layer(channels, filters[-1][1], (1,1), width, height)
     sum += result
@@ -63,7 +63,7 @@ def calc_flops(filters, kernels, input_width, input_height, channels=1):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', default='/media/eddy/datasets/models/new/pruned/channel_30/pruned_c30_b0_CURL_temp0.0_modeALL/birdnet_final.pt', help='path to file')
+    parser.add_argument('--path', default='/media/eddy/datasets/models/new_shape/delta03_gamma04/birdnet_v20.pt', help='path to file')
     parser.add_argument('--width', default=384)
     parser.add_argument('--height', default=64)
     kernel_sizes=[(5, 5), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3)]

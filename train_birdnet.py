@@ -32,7 +32,7 @@ threshold = 0.5
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=3, early_stopping=6, gamma=0.5, delta=0.5, device="cuda"):
+                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=4, early_stopping=10, gamma=0.5, delta=0.5, device="cuda"):
 
         torch.cuda.manual_seed(1337)
         torch.manual_seed(73)

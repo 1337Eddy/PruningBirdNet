@@ -33,7 +33,7 @@ class Monitor():
 
         if (self.counter >= self.patience):
             self.counter = 0
-            print("Reduce Learning rate to {:.8f}".format(lr*0.5))
+            print("\nReduce Learning rate to {:.8f}\n".format(lr*0.5))
             return Status.LEARNING_RATE
         
         return Status.NOTHING

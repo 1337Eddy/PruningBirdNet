@@ -29,7 +29,7 @@ class DataLabels():
         [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
         [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
         [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
-        [512, 512, self.num_classes]]
+        [512, 1024, self.num_classes]]
 
         # self.filters = [[[16]], 
         # [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
@@ -80,8 +80,8 @@ def main():
     parser.add_argument('--scaling_factors_mode', default='together', help='Defines if the scaling factors of the resblocks are trained together or separated')
     parser.add_argument('--dataset_path', default="1dataset/1data/calls/")
     #Define Random seed for reproducibility
-    torch.cuda.manual_seed(137)
-    torch.manual_seed(735)
+    torch.cuda.manual_seed(1337)
+    torch.manual_seed(42)
     
     #Assign Arguments
     args = parser.parse_args()
@@ -134,7 +134,7 @@ def main():
     elif (mode == 'test'):
         #Start Training
         analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
-                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta, device="cpu")
+                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta, device="cuda")
         analyze.summary()
 
 

@@ -40,7 +40,7 @@ class CallsDataset(Dataset):
         #print(idx)
         raise IndexError("Index" + str(idx) + "not in range")
 
-    def __get_spec_from_path__(self, path, rate=48000):
+    def __get_spec_from_path__(self, path, rate=44100):
         sig, rate = openAudioFile(path, rate)
         x = get_spec(sig, rate, shape=(64, 384))
         return x[None, :, :]
