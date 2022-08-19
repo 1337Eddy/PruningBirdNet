@@ -51,7 +51,7 @@ class InputLayer(nn.Module):
     def __init__(self, in_channels, num_filters):
         super(InputLayer, self).__init__()
         self.classifierPath = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=(5,5), padding=2),
+            nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=(5,5), padding=2), #, stride=(1,2)
             nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters),
             #nn.MaxPool2d((1,2)),
@@ -208,7 +208,7 @@ class DownsamplingResBlock(nn.Module):
 class ClassificationPath(nn.Module):
     def __init__(self, in_channels, num_filters, kernel_size):
         super(ClassificationPath, self).__init__()
-        self.classifierPath = nn.Sequential(
+        self.classifierPath = nn.Sequential(           
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[0], kernel_size=kernel_size, padding=0),
             nn.BatchNorm2d(num_features=num_filters[0]),
             nn.ReLU(True),

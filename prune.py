@@ -24,21 +24,13 @@ class Pruning_Structure(Enum):
     RESBLOCK = 0
     ALL = 1
 
-def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.SEPARATE):
+def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.TOGETHER):
     data = DataLabels(dataset_path + "train/",)
     analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path,
-                            num_workers=16, batch_size=16, save_path=save_path, gamma=0.5, delta=0.5)
+                            num_workers=16, batch_size=16, save_path=save_path, gamma=0, delta=0)
     analyze.start_training(epochs, scaling_factor_mode=scaling_factor_mode)
 
     return birdnet
-
-def test(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/"):
-    data = DataLabels(dataset_path + "train/",)
-    analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path,
-                        num_workers=16, batch_size=16, save_path=save_path, gamma=0.2)
-    loss, top1 = analyze.test(mode="val")
-
-    return loss, top1
 
 def prune(load_path, ratio, lr=0.001, mode=Channel_Pruning_Mode.NO_PADD, channel_ratio=0.5, 
                     dim_handling=model.Dim_Handling.PADD, prune_structure="ALL", block_temperatur=0):
