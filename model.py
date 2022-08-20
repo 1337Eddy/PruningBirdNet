@@ -54,7 +54,6 @@ class InputLayer(nn.Module):
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters, kernel_size=(5,5), padding=2), #, stride=(1,2)
             nn.ReLU(True),
             nn.BatchNorm2d(num_features=num_filters),
-            #nn.MaxPool2d((1,2)),
         )
 
     def forward(self, x):
@@ -120,20 +119,18 @@ class Resblock(nn.Module):
                             nn.BatchNorm2d(num_features=num_filters[1])]
 
         self.classifier = nn.Sequential(*self.layer_list)
-        self.W = torch.nn.Parameter(torch.tensor([1.0, 1.0]))
+        self.W = torch.nn.Parameter(torch.tensor(1.0))
         self.W.requires_grad = True
-        self.softmax = nn.Softmax(dim=0)
 
 
 
     def forward(self, x):
         if weight_block:
-            scaling_factors = self.softmax(self.W)
+            scaling_factor = self.W
         else: 
-            scaling_factors = [1.0, 1.0]
+            scaling_factor = torch.tensor(1.0)
 
         skip = x 
-        skip = torch.mul(skip, scaling_factors[1])
         x = self.classifier(x)
         if dim_handling == Dim_Handling.PADD or np.shape(x) == np.shape(skip):   
             num_channels_x = x.size(dim=1) 
@@ -149,7 +146,7 @@ class Resblock(nn.Module):
                 skip = skip[:,:num_channels_x,:,:] 
             assert np.shape(x) == np.shape(skip)                    
 
-            x = torch.mul(x, scaling_factors[0])
+            x = torch.mul(x, scaling_factor)
             x = torch.add(x, skip)
         elif dim_handling == Dim_Handling.SKIP:
             pass
@@ -180,25 +177,23 @@ class DownsamplingResBlock(nn.Module):
             nn.MaxPool2d(2),
             nn.Conv2d(in_channels=in_channels, out_channels=num_filters[2], kernel_size=(1,1))
         )
-        self.W = torch.nn.Parameter(torch.tensor([1.0, 1.0]))
+        self.W = torch.nn.Parameter(torch.tensor(1.0))
         self.W.requires_grad = True
 
 
         self.batchnorm = nn.Sequential(
             nn.BatchNorm2d(num_features=num_filters[2]),
         )
-        self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):
         if weight_block:
-            scaling_factors = self.softmax(self.W)
+            scaling_factor = self.W
         else: 
-            scaling_factors = [1.0, 1.0]
+            scaling_factor = torch.tensor(1)
 
         skip = self.skipPath(x)
-        skip = torch.mul(skip, scaling_factors[1])
+        skip = torch.mul(skip, scaling_factor)
         x = self.classifierPath(x)
-        x = torch.mul(x, scaling_factors[0])
         x = torch.add(x, skip)
         x = self.batchnorm(x)
         return x

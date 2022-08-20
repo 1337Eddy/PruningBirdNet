@@ -45,7 +45,6 @@ def print_conv_layer_scaling_factors(name):
     birdnet.load_state_dict(checkpoint['model_state_dict'])
     counter = 0
     sum = 0
-    s = torch.nn.Softmax(dim=0)
     for resstack in birdnet.module.classifier:
         if isinstance(resstack, model.ResStack):
             for resblock in resstack.classifier:
@@ -53,7 +52,7 @@ def print_conv_layer_scaling_factors(name):
                     fst_layer = resblock.classifier[3].weight.cpu()
                     snd_layer = resblock.classifier[7].weight.cpu()
                     #print("ResBlock")
-                    print(s(resblock.W)[0])
+                    print(resblock.W)
                     #print(torch.sum(torch.abs(fst_layer)))
                     #print(torch.sum(torch.abs(snd_layer)))
                     #print()
@@ -66,7 +65,7 @@ def print_conv_layer_scaling_factors(name):
                     snd_layer = resblock.classifierPath[4].weight.cpu()
                     #print()
                     last_layer = resblock.batchnorm[0].weight.cpu()
-                    print("DS Block: " + str(s(resblock.W)[0]))
+                    print("DS Block: " + str(resblock.W))
                     #print(torch.abs(fst_layer))
                     #print(torch.abs(snd_layer))
                     #print(last_layer)
@@ -84,22 +83,7 @@ def print_conv_layer_scaling_factors(name):
         sum = torch.tensor([0]).cuda()  
     return sum, counter
 print("\nGamma 0.3, Delta 0.3")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma03_delta03/birdnet_final.pt")
-print("\nGamma 0.3, Delta 0.5")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma03_delta05/birdnet_final.pt")
-print("\nGamma 0.3, Delta 0.7")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma03_delta07/birdnet_final.pt")
-print("\nGamma 0.5, Delta 0.3")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma05_delta03/birdnet_final.pt")
-print("\nGamma 0.5, Delta 0.5")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma05_delta05/birdnet_final.pt")
-print("\nGamma 0.5, Delta 0.7")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma05_delta07/birdnet_final.pt")
-print("\nGamma 0.7, Delta 0.3")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma07_delta03/birdnet_final.pt")
-print("\nGamma 0.7, Delta 0.5")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma07_delta05/birdnet_final.pt")
-print("\nGamma 0.7, Delta 0.7")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/search_gamma_delta/gamma07_delta07/birdnet_final.pt")
+print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/baseline_gamma03_delta05/birdnet_v17.pt")
+
 print()
 #print_test_accuracys(names)

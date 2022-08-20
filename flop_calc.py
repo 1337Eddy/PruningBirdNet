@@ -63,7 +63,7 @@ def calc_flops(filters, kernels, input_width, input_height, channels=1):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', default='/media/eddy/datasets/models/new_shape/delta03_gamma04/birdnet_v20.pt', help='path to file')
+    parser.add_argument('--path', default='/media/eddy/datasets/models/no_maxpool/baseline_gamma0_delta0/birdnet_final.pt', help='path to file')
     parser.add_argument('--width', default=384)
     parser.add_argument('--height', default=64)
     kernel_sizes=[(5, 5), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3)]

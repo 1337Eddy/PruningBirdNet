@@ -20,8 +20,8 @@ class SelectMask():
         self.len_resblock = len("module.classifier.1.classifier.2")
         self.model_state_dict = model_state_dict
         self.scaling_factors = self.get_scaling_factors()
-        #for key, item in self.scaling_factors.items():
-        #    print(f"key: {key} item: {item}")
+        for key, item in self.scaling_factors.items():
+           print(f"key: {key} item: {item}")
 
     def softmax(self, tensor, alpha):
         new = []
@@ -33,32 +33,48 @@ class SelectMask():
             new.append(zaehler/nenner)
         return new 
 
-    def get_temperature_ratio(self, key, ratio, temperature):
-        factors = []
-        for _, item in self.scaling_factors.items():
-            factors.append(item[0].cpu())
+    def prepare_scaling_factors(self, temperature):
+        block_factors = []
+        ds_factors = []
+        for name, item in self.scaling_factors.items():
+            if "classifier.0" in name:
+                ds_factors.append(item.cpu())
+            else: 
+                block_factors.append(item.cpu())
+        block_scaling_factors = (torch.tensor(self.softmax(block_factors, temperature))*len(block_factors)).tolist()
+        ds_scaling_factors = (torch.tensor(self.softmax(ds_factors, temperature))*len(ds_factors)).tolist()
+        block_scaling_factors.reverse()
+        ds_scaling_factors.reverse()
+        scaling_factors = []
+        for name, item in self.scaling_factors.items():
+            if "classifier.0" in name:
+                scaling_factors.append(ds_scaling_factors.pop())
+            else: 
+                scaling_factors.append(block_scaling_factors.pop())
+        return scaling_factors
 
-        scaling_factors = torch.tensor(self.softmax(factors, temperature))*len(self.scaling_factors)
-        elem_of_resblock = re.search(self.resstack_pattern, key)
-        if elem_of_resblock:
+    def get_temperature_ratio(self, key, ratio, temperature):
+        scaling_factors = torch.tensor(self.prepare_scaling_factors(temperature))
+        
+        elem_of_resstack = re.search(self.resstack_pattern, key)
+        if elem_of_resstack:
             key = key[:32]
             index = list(self.scaling_factors.keys()).index(key)
-            factors = ratio + (ratio - scaling_factors*ratio)
-            new_factor = torch.relu(torch.tanh(1.3 * factors))[index]
-
+            block_factors = ratio + (ratio - scaling_factors*ratio)
+            new_factor = torch.relu(torch.minimum(block_factors, torch.tensor(1.0)))[index]
             return new_factor
         else: 
             return ratio 
 
     def get_scaling_factors(self):
         pattern = "module\.classifier\.[0-9]+\.classifier\.[0-9]\.W"
-        softmax = torch.nn.Softmax(dim=0)
         scaling_factors = {}
         for key, item in self.model_state_dict.items():
             result = re.search(pattern, key)
             if result:
-                factors = softmax(item)
-                scaling_factors[key[:-2]] = factors
+                scaling_factors[key[:-2]] = item
+
+        #print(scaling_factors)
         return scaling_factors
 
 

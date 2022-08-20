@@ -7,36 +7,34 @@ from torch import nn
 def prune_blocks(model_state_dict, filters, ratio):
     remove_index = []
     remove_list = []
-    softmax = nn.Softmax(dim=0)
     #Create list of scaling factors to remove the least important
     scaling_factors = []
     for i in range(1, len(filters) - 1):
         for j in range (1, len(filters[i])):
             name = f"module.classifier.{i}.classifier.{j}."
             W = model_state_dict[name + "W"]
-            W = softmax(W)
             scaling_factors.append(W)
 
-    scaling_factors = sorted(scaling_factors, key=lambda x: x[1], reverse=True)
+    scaling_factors = sorted(scaling_factors, reverse=True)
 
     if ratio > len(scaling_factors) or ratio < 0:
         raise RuntimeError(f'{ratio} is no valid argument. It has to be an Integer between 0 and {len(scaling_factors)-1}')
 
     
     if ratio >= len(scaling_factors) - 1:
-        threshold = 1.0
+        threshold = 100000000000.0
     elif ratio <= 0:
         threshold = 0.0
     else: 
-        threshold = scaling_factors[ratio][0]
+        threshold = scaling_factors[ratio]
 
     #Iterate over filters to build names of saved layers and find layers to drop
     for i in range(1, len(filters) - 1):
         for j in range (1, len(filters[i])):
             name = f"module.classifier.{i}.classifier.{j}."
-            W = softmax(model_state_dict[name + "W"])
+            W = model_state_dict[name + "W"]
             #If the condition to the custom weights is True drop the whole layer
-            if (W[0] < threshold):
+            if (W < threshold):
                 layers = list(model_state_dict.keys())
                 remove_index.insert(0, (i,j)) 
                 for layer in layers:

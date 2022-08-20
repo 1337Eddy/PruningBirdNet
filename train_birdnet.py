@@ -67,16 +67,25 @@ class AnalyzeBirdnet():
         self.optimizer = optim.Adam(self.birdnet.parameters(), lr=self.lr) 
         self.delta = delta
 
-    def sum_scaling_parameters(self):
+    def sum_block_scaling_parameters(self):
         counter = 0
         sum = 0
-        fun = nn.Softmax(dim=0)
-        for param in self.birdnet.parameters():
-            if np.shape(param) == torch.Size([2]):
-                scaling_factors = fun(param)
-                sum += scaling_factors[0]
-                counter += 1
-        sum.cuda()
+        if self.device == "cuda": 
+            classifier = self.birdnet.module.classifier 
+        else: 
+            classifier = self.birdnet.classifier
+
+        for resstack in classifier:
+            if isinstance(resstack, model.ResStack):
+                for resblock in resstack.classifier:
+                    if isinstance(resblock, model.Resblock):
+                        sum += torch.abs(resblock.W)
+                        counter += 1
+                    if isinstance(resblock, model.DownsamplingResBlock):
+                        sum += torch.abs(resblock.W) / 3
+                        counter += 1
+        if self.device == "cuda": 
+            sum.cuda()
         return sum, counter
     
 
@@ -138,7 +147,7 @@ class AnalyzeBirdnet():
 
     def calc_loss(self, output, target):
         loss = self.criterion(output.float(), target.float())
-        sum_scaling_factors, num_scaling_factors  = self.sum_scaling_parameters()
+        sum_scaling_factors, num_scaling_factors  = self.sum_block_scaling_parameters()
         sum_channel_factors, num_channel_factors = self.sum_conv_layer_scaling_factors()
 
 
