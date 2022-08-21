@@ -20,8 +20,6 @@ class SelectMask():
         self.len_resblock = len("module.classifier.1.classifier.2")
         self.model_state_dict = model_state_dict
         self.scaling_factors = self.get_scaling_factors()
-        for key, item in self.scaling_factors.items():
-           print(f"key: {key} item: {item}")
 
     def softmax(self, tensor, alpha):
         new = []

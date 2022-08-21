@@ -81,7 +81,6 @@ class SelectMaskCURL(SelectMask):
             new_ratio = ratio
             if key in fst_layers.keys():
                 new_ratio = self.get_temperature_ratio(key, ratio, block_temperature)
-            print(f"{key}: {new_ratio}")
             if part == Pruning_Structure.RESBLOCK:
                 if re.search(self.bn_layer_in_dsblock_pattern, key):
                     mask = self.create_mask(layers[key], 0)
