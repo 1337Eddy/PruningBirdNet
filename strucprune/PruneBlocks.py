@@ -15,7 +15,7 @@ def prune_blocks(model_state_dict, filters, ratio):
             W = model_state_dict[name + "W"]
             scaling_factors.append(W)
 
-    scaling_factors = sorted(scaling_factors, reverse=True)
+    scaling_factors = sorted(scaling_factors, reverse=False)
 
     if ratio > len(scaling_factors) or ratio < 0:
         raise RuntimeError(f'{ratio} is no valid argument. It has to be an Integer between 0 and {len(scaling_factors)-1}')
@@ -24,7 +24,7 @@ def prune_blocks(model_state_dict, filters, ratio):
     if ratio >= len(scaling_factors) - 1:
         threshold = 100000000000.0
     elif ratio <= 0:
-        threshold = 0.0
+        threshold = -1000.0
     else: 
         threshold = scaling_factors[ratio]
 
