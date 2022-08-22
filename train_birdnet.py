@@ -20,6 +20,7 @@ import utils.monitor as monitor
 from utils import audio
 from torch.utils.data import DataLoader
 import wandb
+import random
 
 class Scaling_Factor_Mode(Enum):
     TOGETHER = 0
@@ -29,14 +30,20 @@ class Scaling_Factor_Mode(Enum):
 
 threshold = 0.5
 
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=4, early_stopping=10, gamma=0.5, delta=0.5, device="cuda"):
+                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=5, early_stopping=10, gamma=0.5, delta=0.5, device="cuda"):
 
         torch.cuda.manual_seed(1337)
         torch.manual_seed(73)
-
+        g = torch.Generator()
+        g.manual_seed(1337)
         self.device = device
 
         train_dataset = CallsDataset(dataset_path + "train/")
@@ -45,9 +52,9 @@ class AnalyzeBirdnet():
 
         #time_test_dataset = CallsDataset("/media/eddy/datasets/birdclef/")
 
-        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-        self.val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=g)
+        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=g)
+        self.val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, worker_init_fn=seed_worker, generator=g)
         #self.time_test_loader = DataLoader(time_test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
 
         self.dataset = dataset
