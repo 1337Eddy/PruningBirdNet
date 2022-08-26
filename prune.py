@@ -76,7 +76,7 @@ def parse_arguments():
     parser.add_argument('--channel_ratio', default=0.3)
     parser.add_argument('--block_ratio', default=0)
     parser.add_argument('--mode', default="CURL")
-    parser.add_argument('--train_set', default="1dataset/1data/calls/")
+    parser.add_argument('--dataset_path', default="1dataset/1data/calls/")
     parser.add_argument('--scaling_factors_mode', default='together')
     parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--simultaneous', default="True")
@@ -89,7 +89,7 @@ def parse_arguments():
     block_ratio = int(args.block_ratio)  
     load_path = args.load_path
     save_path = args.save_path
-    train_set = args.train_set
+    train_set = args.dataset_path
     epochs = int(args.epochs)
     scaling_factor_mode = args.scaling_factors_mode
     scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER

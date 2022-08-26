@@ -71,6 +71,8 @@ def main():
     checkpoint = torch.load(args.path)
     width = args.width
     height = args.height
-    print(calc_flops(checkpoint['filters'], kernel_sizes, width, height))
+    num_flops = calc_flops(checkpoint['filters'], kernel_sizes, width, height)
+    num_flops /= 10**9
+    print(str(num_flops) + "GigaFLOPS")
 if __name__ == '__main__':
     main()

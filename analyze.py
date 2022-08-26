@@ -24,12 +24,19 @@ class DataLabels():
         self.birds = os.listdir(path)
         self.birds = sorted(self.birds)
         self.num_classes = len(self.birds)
-        self.filters = [[[32]], 
+        # self.filters = [[[32]], 
+        # [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
+        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
+        # [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
+        # [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
+        # [512, 1024, self.num_classes]]
+
+        self.filters = [[[16]], 
+        [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
         [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
         [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
         [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
-        [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
-        [512, 1024, self.num_classes]]
+        [256, 512, self.num_classes]]
 
         # self.filters = [[[16]], 
         # [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
@@ -142,9 +149,9 @@ def main():
         # print(f"accuracy train: {(top1.avg*100):.2f}%")
         # print(f"loss train: {loss_subdivision[0].avg:.6f}")
 
-        loss_subdivision, top1 = analyze.test(mode="val")
-        print(f"accuracy val: {(top1.avg*100):.2f}%")
-        print(f"loss val: {loss_subdivision[0].avg:.6f}")
+        # loss_subdivision, top1 = analyze.test(mode="val")
+        # print(f"accuracy val: {(top1.avg*100):.2f}%")
+        # print(f"loss val: {loss_subdivision[0].avg:.6f}")
         
         loss_subdivision, top1 = analyze.test(mode="test")
         print(f"accuracy test: {(top1.avg*100):.2f}%")

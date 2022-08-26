@@ -3,21 +3,24 @@ import os
 import random
 import shutil
 
-source_path = "/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/birdclef/calls/test/"
-destination_path = "/media/eddy/bachelor-arbeit/PruningBirdNet/1dataset/birdclef/calls/batch/"
+source_path = "/media/eddy/datasets/birdclef/"
+destination_path = "/media/eddy/datasets/birdclef_small/"
 
 folders = os.listdir(source_path)
 
 fileformat = ".wav"
 os.mkdir(destination_path + "train" + "/")
 os.mkdir(destination_path + "test" + "/")
+os.mkdir(destination_path + "val" + "/")
 
 for bird in folders:
     calls = os.listdir(source_path + bird + "/")
     calls = filter(lambda file: fileformat in file, calls)
     calls = list(map(lambda x: x[:-4], calls))
-    #print(calls)
+    print(bird)
     random.shuffle(calls)
+    if len(calls) > 400:
+        calls = calls[:int(len(calls)*0.25)]
     num_train = int(len(calls) * 0.7)
     num_val = int(len(calls) * 0.2)
     train = calls[:num_train]
