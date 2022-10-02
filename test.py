@@ -51,8 +51,8 @@ def print_conv_layer_scaling_factors(name):
                 if isinstance(resblock, model.Resblock): 
                     fst_layer = resblock.classifier[3].weight.cpu()
                     snd_layer = resblock.classifier[7].weight.cpu()
-                    #print("ResBlock")
-                    print(resblock.W)
+                    print("ResBlock")
+                    #print(resblock.W)
                     #print(torch.sum(torch.abs(fst_layer)))
                     #print(torch.sum(torch.abs(snd_layer)))
                     #print()
@@ -65,7 +65,7 @@ def print_conv_layer_scaling_factors(name):
                     snd_layer = resblock.classifierPath[4].weight.cpu()
                     #print()
                     last_layer = resblock.batchnorm[0].weight.cpu()
-                    print("DS Block: " + str(resblock.W))
+                    print("Downsampling Block" )
                     #print(torch.abs(fst_layer))
                     #print(torch.abs(snd_layer))
                     #print(last_layer)
@@ -82,8 +82,7 @@ def print_conv_layer_scaling_factors(name):
     else: 
         sum = torch.tensor([0]).cuda()  
     return sum, counter
-print("\nGamma 0.3, Delta 0.3")
-print_conv_layer_scaling_factors("/media/eddy/datasets/models/no_maxpool/baseline_gamma03_delta05/birdnet_v17.pt")
+print_conv_layer_scaling_factors("/media/eddy/datasets/models/SSS_hard_temp/baseline/pruned/pruned_c0_b8_CURL_temp0.0_modeALL/birdnet_raw.pt")
 
 print()
 #print_test_accuracys(names)

@@ -1,4 +1,6 @@
 import os
+import random
+import sys
 import time
 import numpy as np
 import torch
@@ -14,49 +16,24 @@ from utils.metrics import accuracy
 import argparse
 from utils import audio
 import re
-
+import flop_calc 
 
 
 
 class DataLabels():
-    def __init__(self, path):
+    def __init__(self, path, K=2):
         self.path = path
         self.birds = os.listdir(path)
         self.birds = sorted(self.birds)
         self.num_classes = len(self.birds)
-        # self.filters = [[[32]], 
-        # [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
-        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        # [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
-        # [[256, 256, 512], [512, 512], [512, 512], [512, 512]],
-        # [512, 1024, self.num_classes]]
+        FILTERS = [8, 16, 32, 64, 128, 256]
 
-        self.filters = [[[16]], 
-        [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
-        [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
-        [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
-        [256, 512, self.num_classes]]
-
-        # self.filters = [[[16]], 
-        # [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
-        # [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
-        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        # [[128, 128, 256], [256, 256], [256, 256], [256, 256]], 
-        # [256, 256, self.num_classes]]
-
-        # self.filters = [[[16]], 
-        # [[16, 16, 32], [32, 32], [32, 32], [32, 32]],
-        # [[32, 32, 64], [64, 64], [64, 64], [64, 64]], 
-        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        # [128, 128, self.num_classes]]
-
-        # self.filters = [[[32]], 
-        # [[32, 32, 64], [64, 64], [64, 64]], 
-        # [[64, 64, 128], [128, 128], [128, 128], [128, 128]], 
-        # [[128, 128, 256], [256, 256], [256, 256], [256, 256], [256, 256], [256, 256]], 
-        # [[256, 256, 512], [512, 512], [512, 512]],
-        # [512, 512, self.num_classes]]
+        self.filters = [[[8*K]], 
+        [[8*K, 8*K, 16*K], [16*K, 16*K], [16*K, 16*K], [16*K, 16*K]], 
+        [[16*K, 16*K, 32*K], [32*K, 32*K], [32*K, 32*K], [32*K, 32*K]], 
+        [[32*K, 32*K, 64*K], [64*K, 64*K], [64*K, 64*K], [64*K, 64*K]], 
+        [[64*K, 64*K, 128*K], [128*K, 128*K], [128*K, 128*K], [128*K, 128*K]], 
+        [128*K, 256*K, self.num_classes]]
 
 
         self.bird_dict = {x: self.birds.index(x) for x in self.birds}
@@ -86,12 +63,12 @@ def main():
     parser.add_argument('--dim_handling', default='PADD')
     parser.add_argument('--scaling_factors_mode', default='together', help='Defines if the scaling factors of the resblocks are trained together or separated')
     parser.add_argument('--dataset_path', default="1dataset/1data/calls/")
-    #Define Random seed for reproducibility
-    torch.cuda.manual_seed(1337)
-    torch.manual_seed(42)
+    parser.add_argument('--channel_multiplier', default=4)
+    parser.add_argument('--seed', default=0)
     
     #Assign Arguments
     args = parser.parse_args()
+    seed = int(args.seed)
     mode = args.mode
     num_workers=int(args.threads)
     batch_size=args.batch_size
@@ -99,6 +76,7 @@ def main():
     gamma=float(args.gamma)
     delta=float(args.delta)
     dataset_path = args.dataset_path
+    channel_multiplier = int(args.channel_multiplier)
 
     dim_handling = args.dim_handling
     if dim_handling == "PADD":
@@ -108,8 +86,11 @@ def main():
 
     Path(args.save_path).mkdir(parents=True, exist_ok=True)
 
+    torch.cuda.manual_seed(seed)
+    torch.manual_seed(seed)
+    random.seed(seed)
 
-    data = DataLabels(dataset_path + "train/")
+    data = DataLabels(dataset_path + "train/", channel_multiplier)
 
     if (args.load_path != ''):
         checkpoint = torch.load(args.load_path)
@@ -129,7 +110,7 @@ def main():
     
     if (mode == 'train'):
         analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
-                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta)
+                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta, seed_value=seed)
         scaling_factor_mode = Scaling_Factor_Mode.SEPARATE if args.scaling_factors_mode == "separated" else Scaling_Factor_Mode.TOGETHER
 
         analyze.start_training(int(args.epochs), scaling_factor_mode)
@@ -139,23 +120,18 @@ def main():
         for sample in result:
             print(sample)
     elif (mode == 'test'):
-        #Start Training
         analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path, 
-                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta, device="cuda")
-        analyze.summary()
+                    batch_size=batch_size, num_workers=num_workers, save_path=args.save_path, gamma=gamma, delta=delta, device="cuda", seed_value=seed)
 
-
-        # loss_subdivision, top1 = analyze.test(mode="train")
-        # print(f"accuracy train: {(top1.avg*100):.2f}%")
-        # print(f"loss train: {loss_subdivision[0].avg:.6f}")
-
-        # loss_subdivision, top1 = analyze.test(mode="val")
-        # print(f"accuracy val: {(top1.avg*100):.2f}%")
-        # print(f"loss val: {loss_subdivision[0].avg:.6f}")
-        
+        total_params = 0
+        for name, parameter in birdnet.named_parameters():
+            if not parameter.requires_grad: 
+                continue
+            param = parameter.numel()
+            total_params+=param
+        num_flops = flop_calc.calc_flops(birdnet.module.filters, None, 384, 64)
         loss_subdivision, top1 = analyze.test(mode="test")
-        print(f"accuracy test: {(top1.avg*100):.2f}%")
-        print(f"loss test: {loss_subdivision[0].avg:.6f}")
+        sys.stdout.write(f"{top1.avg} {total_params} {num_flops}\n")
 
 if __name__ == '__main__':
     main()

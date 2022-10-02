@@ -24,10 +24,10 @@ class Pruning_Structure(Enum):
     RESBLOCK = 0
     ALL = 1
 
-def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.TOGETHER):
+def retrain(birdnet, criterion, save_path, epochs=10, lr=0.001, dataset_path="1dataset/1data/calls/", scaling_factor_mode=Scaling_Factor_Mode.TOGETHER, seed=10):
     data = DataLabels(dataset_path + "train/",)
     analyze = AnalyzeBirdnet(birdnet=birdnet, dataset=data, lr=lr, criterion=criterion, dataset_path=dataset_path,
-                            num_workers=16, batch_size=16, save_path=save_path, gamma=0, delta=0)
+                            num_workers=16, batch_size=16, save_path=save_path, gamma=0, delta=0, seed_value=seed)
     analyze.start_training(epochs, scaling_factor_mode=scaling_factor_mode)
 
     return birdnet
@@ -82,9 +82,12 @@ def parse_arguments():
     parser.add_argument('--simultaneous', default="True")
     parser.add_argument('--prune_structure', default="ALL")
     parser.add_argument('--block_temperatur', default=0)
+    parser.add_argument('--seed', default=10)
+    
 
 
     args = parser.parse_args()
+    seed = int(args.seed)
     channel_ratio = float(args.channel_ratio) 
     block_ratio = int(args.block_ratio)  
     load_path = args.load_path
@@ -146,10 +149,10 @@ def parse_arguments():
     else: 
         raise RuntimeError('{mode} is no valid argument. Input NO_PADD, MIN, CURL or EVENLY')
     
-    return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur
+    return channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur, seed
 
 if __name__ == '__main__':
-    channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur = parse_arguments()
+    channel_ratio, block_ratio, mode, load_path, save_path, finetune, simultaneous, epochs, train_set, scaling_factor_mode, dim_handling, prune_structure, block_temperatur, seed = parse_arguments()
     
     folder_name = f"pruned_c{int(100*channel_ratio)}_b{int(block_ratio)}_{mode._name_}_temp{block_temperatur}_mode{prune_structure.name}/"
     save_path += folder_name        
@@ -162,7 +165,7 @@ if __name__ == '__main__':
         birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=channel_ratio, 
                 dim_handling=dim_handling, prune_structure=prune_structure, block_temperatur=block_temperatur)
         if finetune:
-            retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode)
+            retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode, seed=seed)
     else: 
         birdnet = prune(load_path, ratio=block_ratio, mode=mode, channel_ratio=0.0, dim_handling=dim_handling)
         retrain(birdnet, criterion, save_path=save_path, lr=0.001, dataset_path=train_set, epochs=epochs, scaling_factor_mode=scaling_factor_mode)

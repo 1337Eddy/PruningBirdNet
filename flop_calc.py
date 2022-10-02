@@ -66,12 +66,14 @@ def main():
     parser.add_argument('--path', default='/media/eddy/datasets/models/no_maxpool/baseline_gamma0_delta0/birdnet_final.pt', help='path to file')
     parser.add_argument('--width', default=384)
     parser.add_argument('--height', default=64)
+
     kernel_sizes=[(5, 5), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3), (3, 3)]
     args = parser.parse_args()
     checkpoint = torch.load(args.path)
     width = args.width
     height = args.height
-    num_flops = calc_flops(checkpoint['filters'], kernel_sizes, width, height)
+    filters = checkpoint['filters']
+    num_flops = calc_flops(filters, kernel_sizes, width, height)
     num_flops /= 10**9
     print(str(num_flops) + "GigaFLOPS")
 if __name__ == '__main__':

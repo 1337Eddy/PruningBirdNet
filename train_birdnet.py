@@ -22,10 +22,10 @@ from torch.utils.data import DataLoader
 import wandb
 import random
 
+
 class Scaling_Factor_Mode(Enum):
     TOGETHER = 0
     SEPARATE = 1
-
 
 
 threshold = 0.5
@@ -38,12 +38,14 @@ def seed_worker(worker_id):
 
 class AnalyzeBirdnet():
     def __init__(self, birdnet, dataset, lr=0.001, criterion=nn.CrossEntropyLoss().cuda(), 
-                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=5, early_stopping=10, gamma=0.5, delta=0.5, device="cuda"):
+                    dataset_path="1dataset/1data/calls/", batch_size=16, num_workers=16, save_path=None, loss_patience=5, early_stopping=10, gamma=0.5, delta=0.5, device="cuda", seed_value=10):
 
-        torch.cuda.manual_seed(1337)
-        torch.manual_seed(73)
+        torch.cuda.manual_seed(seed_value)
+        torch.manual_seed(seed_value)
+        torch.use_deterministic_algorithms(True)
+        random.seed(seed_value)
         g = torch.Generator()
-        g.manual_seed(1337)
+        g.manual_seed(seed_value)
         self.device = device
 
         train_dataset = CallsDataset(dataset_path + "train/")
@@ -261,7 +263,7 @@ class AnalyzeBirdnet():
             prec = accuracy(output.data, target)
             top1.update(prec, data.size(0))
         loss_subdivision = [losses, losses_block, losses_channel, losses_acc]
-        print(f"{mode} has taken {mean_time.sum:.4f}s in average {mean_time.avg:.6f}s")
+        #print(f"{mode} has taken {mean_time.sum:.4f}s in average {mean_time.avg:.6f}s")
         return loss_subdivision, top1
 
 
